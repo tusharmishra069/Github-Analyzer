@@ -270,9 +270,9 @@ export function Features() {
       <div className="max-w-6xl mx-auto px-6">
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-20">
-          <h2 className="text-6xl font-bold tracking-tight text-slate-900 mb-4">
-            Three Tools One Codebase.
-          </h2>
+            <h2 className="text-6xl font-bold tracking-tight text-slate-900 mb-4">
+            Three Tools One <span className="text-blue-600 ">Codebase</span>
+            </h2>
           <p className="text-lg text-slate-500">
             From deep architecture reviews to public profile roasts every angle
             of your GitHub presence, analysed.

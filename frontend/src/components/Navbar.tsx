@@ -3,9 +3,39 @@
 import { motion } from "framer-motion";
 import { Command, Github } from "lucide-react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
+function useSmoothScrollTo(id: string) {
+    const pathname = usePathname();
+    const router = useRouter();
+
+    return (e: React.MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault();
+        const scroll = () => {
+            const el = document.getElementById(id);
+            if (el) {
+                const navbarHeight = 64; // h-16
+                const top = el.getBoundingClientRect().top + window.scrollY - navbarHeight;
+                window.scrollTo({ top, behavior: "smooth" });
+            }
+        };
+
+        if (pathname === "/") {
+            scroll();
+        } else {
+            // Navigate home first, then scroll once the page has loaded
+            router.push("/");
+            // Give Next.js time to mount the page
+            setTimeout(scroll, 400);
+        }
+    };
+}
+
 export function Navbar() {
+    const scrollToFeatures = useSmoothScrollTo("features");
+    const scrollToPricing  = useSmoothScrollTo("pricing");
+
     return (
         <motion.header
             initial={{ opacity: 0, y: -20 }}
@@ -20,8 +50,8 @@ export function Navbar() {
                 </Link>
 
                 <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
-                    <Link href="/#features" className="hover:text-slate-900 transition-colors">Features</Link>
-                    <Link href="/#pricing" className="hover:text-slate-900 transition-colors">Pricing</Link>
+                    <a href="/#features" onClick={scrollToFeatures} className="hover:text-slate-900 transition-colors cursor-pointer">Features</a>
+                    <a href="/#pricing" onClick={scrollToPricing} className="hover:text-slate-900 transition-colors cursor-pointer">Pricing</a>
                     <Link href="/repo-analysis" className="hover:text-slate-900 transition-colors">Code Analysis</Link>
                     <Link href="/profile-review" className="hover:text-slate-900 transition-colors">Profile Review</Link>
                     <Link href="/profile-roast" className="hover:text-slate-900 transition-colors">Roast</Link>

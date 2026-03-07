@@ -191,8 +191,10 @@ export default function Home() {
             FEATURES / PRICING / FOOTER
         ════════════════════════════════════════════════ */}
         <div className="relative z-10 bg-white w-full">
-          <Features />
-          {/* <Pricing /> */}
+          <div id="features">
+            <Features />
+          </div>
+          {/* <div id="pricing"><Pricing /></div> */}
           <Footer />
         </div>
 
