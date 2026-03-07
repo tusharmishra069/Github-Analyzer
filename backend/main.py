@@ -68,6 +68,25 @@ class JobStatusResponse(BaseModel):
     result: Optional[Any] = None
 
 
+class RoastRequest(BaseModel):
+    username: str
+
+
+class RoastLine(BaseModel):
+    emoji: str
+    text: str
+
+class RoastData(BaseModel):
+    lines: list[RoastLine]
+    verdict: str
+
+class RoastResponse(BaseModel):
+    username: str
+    avatar_url: Optional[str] = None
+    stats: dict
+    roast: RoastData
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -110,4 +129,41 @@ def get_job_status(job_id: str, db: Session = Depends(get_db)):
         progress=job.progress,
         message=job.message,
         result=job.result,
+    )
+
+
+@app.post("/api/roast", response_model=RoastResponse)
+def handle_roast(req: RoastRequest):
+    """Generate a brutal roast for a GitHub profile."""
+    try:
+        from github_service import fetch_github_profile
+        profile_data = fetch_github_profile(req.username)
+    except ValueError as e:
+        import logging
+        logging.error(f"GitHub fetch failed: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        import logging
+        logging.error(f"GitHub fetch error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch GitHub profile")
+        
+    try:
+        from roast_generator import RoastGenerator
+        generator = RoastGenerator()
+        roast_data = generator.generate_roast(profile_data)
+    except Exception as e:
+        import logging
+        logging.error(f"Roast generation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate roast: {str(e)}")
+    
+    return RoastResponse(
+        username=profile_data["username"],
+        avatar_url=profile_data.get("avatar_url"),
+        stats={
+            "followers": profile_data.get("followers", 0),
+            "public_repos": profile_data.get("public_repos_count", 0),
+            "total_stars": profile_data.get("total_stars", 0),
+            "top_language": profile_data.get("top_language", "None")
+        },
+        roast=roast_data
     )

@@ -283,7 +283,7 @@ export default function RepoAnalysisDashboard() {
                                         <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                                             <Button
                                                 type="submit"
-                                                className="h-13 px-7 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-base font-semibold flex items-center gap-2 transition-colors shadow-lg shadow-indigo-500/20"
+                                                className="h-13 px-7 rounded-xl bg-black hover:bg-black/80 text-white text-base font-semibold flex items-center gap-2 transition-colors"
                                             >
                                                 Scan Repo
                                                 <ArrowRight className="w-4 h-4" />
