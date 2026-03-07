@@ -156,15 +156,28 @@ curl -X POST http://localhost:8000/api/profile-review \
 ```
 github-analyzer/
 ├── backend/
-│   ├── main.py                        API routes + Pydantic schemas
-│   ├── database.py                    SQLAlchemy engine (Neon Postgres)
-│   ├── models.py                      Job ORM model
-│   ├── worker.py                      Async repo analysis background task
-│   ├── repo_parser.py                 Git clone + file filtering
-│   ├── ai_engine.py                   Multi-query RAG pipeline (FAISS + Groq)
-│   ├── github_service.py              GitHub REST API wrapper
-│   ├── profile_review_generator.py    Profile review + AI suggestions
-│   └── roast_generator.py             Comedy roast generator
+│   ├── main.py                        App factory — mounts routers, CORS
+│   ├── requirements.txt
+│   └── app/
+│       ├── core/
+│       │   ├── config.py              Settings singleton (env vars, limits)
+│       │   └── database.py            SQLAlchemy engine + session + get_db()
+│       ├── models/
+│       │   └── job.py                 Job ORM model
+│       ├── schemas/
+│       │   ├── analysis.py            Request/response schemas for repo analysis
+│       │   └── profile.py             Schemas for roast, review, suggestions
+│       ├── api/
+│       │   └── routes/
+│       │       ├── analysis.py        POST /api/analyze · GET /api/jobs/{id}/status
+│       │       └── profile.py         POST /api/roast · /profile-review · /profile-suggestions
+│       └── services/
+│           ├── worker.py              Background task — clone → parse → embed → analyze
+│           ├── repo_parser.py         Git clone + file filtering
+│           ├── ai_engine.py           Multi-query RAG pipeline (FAISS + Groq)
+│           ├── github_service.py      GitHub REST API wrapper
+│           ├── profile_review_generator.py  Profile review + AI suggestions
+│           └── roast_generator.py     Comedy roast generator
 ├── frontend/
 │   └── src/
 │       ├── app/

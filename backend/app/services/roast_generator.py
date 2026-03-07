@@ -1,6 +1,7 @@
-import os
-from groq import Groq
 import json
+from groq import Groq
+
+from app.core.config import settings
 
 ROAST_SYSTEM_PROMPT = """You are a witty, unapologetic senior developer known for brutally roasting other developers' GitHub profiles. 
 Your tone is sarcastic, witty, and unapologetically passive-aggressive.
@@ -20,52 +21,47 @@ Return ONLY a valid JSON object matching this schema:
 No markdown formatting or extra text.
 """
 
+
 class RoastGenerator:
     def __init__(self):
-        self.groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        self.groq_client = Groq(api_key=settings.GROQ_API_KEY)
 
     def generate_roast(self, profile_data: dict) -> dict:
         prompt = f"""
-        Roast this GitHub profile:
-        Username: {profile_data.get('username')}
-        Bio: {profile_data.get('bio')}
-        Followers: {profile_data.get('followers')}
-        Public Repos: {profile_data.get('public_repos_count')}
-        Total Stars on recent repos: {profile_data.get('total_stars')}
-        Top Language: {profile_data.get('top_language')}
-        Recent Repositories: {', '.join(profile_data.get('recent_repos', []))}
-        """
-        
+Roast this GitHub profile:
+Username: {profile_data.get('username')}
+Bio: {profile_data.get('bio')}
+Followers: {profile_data.get('followers')}
+Public Repos: {profile_data.get('public_repos_count')}
+Total Stars: {profile_data.get('total_stars')}
+Top Language: {profile_data.get('top_language')}
+Recent Repositories: {', '.join(profile_data.get('recent_repos', []))}
+"""
         try:
-            chat_completion = self.groq_client.chat.completions.create(
+            completion = self.groq_client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": ROAST_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ],
-                model="llama-3.3-70b-versatile",
+                model=settings.GROQ_MODEL,
                 temperature=0.8,
                 max_tokens=650,
                 response_format={"type": "json_object"},
             )
-            
-            response_text = chat_completion.choices[0].message.content.strip()
-            start = response_text.find('{')
-            end = response_text.rfind('}') + 1
+            raw = completion.choices[0].message.content.strip()
+            start, end = raw.find("{"), raw.rfind("}") + 1
             if start != -1 and end > start:
-                response_text = response_text[start:end]
-            result = json.loads(response_text)
-            
-            # Ensure it conforms to our expected format
+                raw = raw[start:end]
+            result = json.loads(raw)
             if "lines" not in result or "verdict" not in result:
                 raise ValueError("JSON missing required fields")
-                
             return result
         except Exception as e:
-            print(f"Roast generation failed: {e}")
+            print(f"[RoastGenerator] generation failed: {e}")
             return {
                 "lines": [
                     {"emoji": "💤", "text": "Even the AI got tired looking at this code."},
-                    {"emoji": "📉", "text": "Too boring to properly roast."}
+                    {"emoji": "📉", "text": "Too boring to properly roast."},
                 ],
-                "verdict": "Try writing something interesting first."
+                "verdict": "Try writing something interesting first.",
             }

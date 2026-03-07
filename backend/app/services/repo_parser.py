@@ -2,12 +2,12 @@ import os
 import shutil
 import tempfile
 import stat
-from git import Repo
 from pathlib import Path
+from git import Repo
 
-# ---------------------------------------------------------------------------
-# File type allow-list — source code only, no binaries or lock files
-# ---------------------------------------------------------------------------
+from app.core.config import settings
+
+# ── Allow-list: source code only, no binaries or lock files ──────────────────
 ALLOWED_EXTENSIONS = {
     ".py", ".js", ".jsx", ".ts", ".tsx",
     ".java", ".c", ".cpp", ".cs",
@@ -17,9 +17,7 @@ ALLOWED_EXTENSIONS = {
     ".sh", ".env.example",
 }
 
-# ---------------------------------------------------------------------------
-# Directories to skip entirely during traversal
-# ---------------------------------------------------------------------------
+# ── Directories to skip entirely ──────────────────────────────────────────────
 SKIP_DIRS = {
     ".git", ".github", ".svn", ".hg",
     "node_modules", "vendor", "venv", ".venv", "env",
@@ -31,18 +29,14 @@ SKIP_DIRS = {
     ".idea", ".vscode", ".DS_Store",
 }
 
-# ---------------------------------------------------------------------------
-# File name patterns to skip (generated, test data, config noise)
-# ---------------------------------------------------------------------------
+# ── File names to skip (lock files, OS noise) ─────────────────────────────────
 SKIP_FILE_PATTERNS = {
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
     "poetry.lock", "Pipfile.lock", "Gemfile.lock", "composer.lock",
     "bun.lockb", ".DS_Store", "Thumbs.db",
 }
 
-# ---------------------------------------------------------------------------
-# Entry-point files get priority — loaded first so they anchor the analysis
-# ---------------------------------------------------------------------------
+# ── Entry-point files are loaded first to anchor the analysis ─────────────────
 ENTRY_POINT_NAMES = {
     "main.py", "app.py", "server.py", "wsgi.py", "asgi.py",
     "index.ts", "index.js", "server.ts", "server.js",
@@ -55,36 +49,14 @@ ENTRY_POINT_NAMES = {
     "README.md",
 }
 
-MAX_FILE_SIZE_BYTES = 512 * 1024   # 512 KB
-MAX_FILE_COUNT = 120               # Cap to avoid embedding explosion on monorepos
 
-
-def remove_readonly(func, path, excinfo):
+def _remove_readonly(func, path, excinfo):
     """Allow rmtree to delete read-only files on macOS/Windows."""
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
 
-def clone_repository(repo_url: str) -> str:
-    """Shallow-clones a repository into a temp directory and returns the path."""
-    temp_dir = tempfile.mkdtemp(prefix="ai_code_analyzer_")
-    try:
-        print(f"Cloning {repo_url} into {temp_dir}...")
-        Repo.clone_from(repo_url, temp_dir, depth=1)
-        return temp_dir
-    except Exception as e:
-        cleanup_repository(temp_dir)
-        raise RuntimeError(f"Failed to clone repository: {str(e)}")
-
-
-def cleanup_repository(repo_dir: str):
-    """Deletes a cloned repository directory."""
-    if os.path.exists(repo_dir):
-        shutil.rmtree(repo_dir, onerror=remove_readonly)
-
-
 def _is_test_file(path: Path) -> bool:
-    """Heuristic: skip obvious test/spec files to focus on production code."""
     name = path.name.lower()
     return (
         name.startswith("test_")
@@ -98,40 +70,48 @@ def _is_test_file(path: Path) -> bool:
     )
 
 
+def clone_repository(repo_url: str) -> str:
+    """Shallow-clones a repository into a temp directory and returns the path."""
+    temp_dir = tempfile.mkdtemp(prefix="ai_code_analyzer_")
+    try:
+        print(f"[repo_parser] Cloning {repo_url} into {temp_dir}...")
+        Repo.clone_from(repo_url, temp_dir, depth=1)
+        return temp_dir
+    except Exception as e:
+        cleanup_repository(temp_dir)
+        raise RuntimeError(f"Failed to clone repository: {e}")
+
+
+def cleanup_repository(repo_dir: str) -> None:
+    """Deletes a cloned repository directory."""
+    if os.path.exists(repo_dir):
+        shutil.rmtree(repo_dir, onerror=_remove_readonly)
+
+
 def parse_codebase(repo_dir: str) -> list[dict]:
     """
     Walks the repository and returns a list of {"path": str, "content": str}
-    dicts, ordered so that entry-point files come first.
-
-    Limits:
-    - Max file size: 512 KB
-    - Max file count: 120
-    - Skips lock files, test files, generated directories
+    dicts, entry-point files ordered first.
     """
     repo_path = Path(repo_dir)
     entry_docs: list[dict] = []
     regular_docs: list[dict] = []
 
     for root, dirs, files in os.walk(repo_path):
-        dirs[:] = [
-            d for d in dirs
-            if d not in SKIP_DIRS and not d.startswith('.')
-        ]
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
 
         for file in sorted(files):
             file_path = Path(root) / file
 
             if file in SKIP_FILE_PATTERNS:
                 continue
-
             if file_path.suffix not in ALLOWED_EXTENSIONS:
                 continue
-
             if _is_test_file(file_path):
                 continue
 
             try:
-                if os.path.getsize(file_path) > MAX_FILE_SIZE_BYTES:
+                if os.path.getsize(file_path) > settings.MAX_FILE_SIZE_BYTES:
                     print(f"[repo_parser] Skipping large file: {file_path.relative_to(repo_path)}")
                     continue
             except OSError:
@@ -152,9 +132,9 @@ def parse_codebase(repo_dir: str) -> list[dict]:
                 regular_docs.append(doc)
 
     all_docs = entry_docs + regular_docs
-    if len(all_docs) > MAX_FILE_COUNT:
-        print(f"[repo_parser] Capping at {MAX_FILE_COUNT} files (found {len(all_docs)}).")
-        all_docs = all_docs[:MAX_FILE_COUNT]
+    if len(all_docs) > settings.MAX_FILE_COUNT:
+        print(f"[repo_parser] Capping at {settings.MAX_FILE_COUNT} files (found {len(all_docs)}).")
+        all_docs = all_docs[: settings.MAX_FILE_COUNT]
 
     print(f"[repo_parser] Parsed {len(all_docs)} files ({len(entry_docs)} entry points).")
     return all_docs

@@ -121,15 +121,28 @@ POST /api/profile-review  or  POST /api/roast
 
 ```
 backend/
-├── main.py                   API entry point, route definitions, Pydantic schemas
-├── database.py               SQLAlchemy engine + session factory (Neon Postgres)
-├── models.py                 Job ORM model
-├── worker.py                 Background task — clone → parse → embed → analyze
-├── repo_parser.py            Git clone, file filtering, entry-point prioritization
-├── ai_engine.py              Multi-query RAG pipeline (FAISS + Groq)
-├── github_service.py         GitHub REST API v3 wrapper (user profile + repos)
-├── profile_review_generator.py   LLM-based profile review + AI suggestions
-└── roast_generator.py        LLM-based comedy roast
+├── main.py                        App factory — mounts routers, CORS middleware
+├── requirements.txt
+└── app/
+    ├── core/
+    │   ├── config.py              Settings singleton (env vars, limits)
+    │   └── database.py            SQLAlchemy engine + session + get_db()
+    ├── models/
+    │   └── job.py                 Job ORM model (SQLAlchemy)
+    ├── schemas/
+    │   ├── analysis.py            AnalyzeRequest / AnalyzeResponse / JobStatusResponse
+    │   └── profile.py             Roast / ProfileReview / AiSuggestions Pydantic schemas
+    ├── api/
+    │   └── routes/
+    │       ├── analysis.py        POST /api/analyze · GET /api/jobs/{id}/status
+    │       └── profile.py         POST /api/roast · /profile-review · /profile-suggestions
+    └── services/
+        ├── worker.py              Background task — clone → parse → embed → analyze
+        ├── repo_parser.py         Git clone, file filtering, entry-point prioritization
+        ├── ai_engine.py           Multi-query RAG pipeline (FAISS + Groq)
+        ├── github_service.py      GitHub REST API v3 wrapper
+        ├── profile_review_generator.py  LLM profile review + AI suggestions
+        └── roast_generator.py     LLM comedy roast
 ```
 
 ---
@@ -141,13 +154,13 @@ backend/
    └── Creates Job row (status=PENDING) in Neon Postgres
    └── Queues background task → returns job_id immediately
 
-2. worker.py — analyze_github_repo(job_id, url)
-   ├── [10%]  Clone repository to /tmp/{job_id}/
-   ├── [25%]  repo_parser.py — walk files, skip dirs (node_modules, .git, etc.)
+2. services/worker.py — analyze_github_repo(job_id, url)
+   ├── [10%]  Initialise, set status=PROCESSING
+   ├── [25%]  services/repo_parser.py — shallow clone to /tmp/
    │           └── Prioritise entry points (main.py, index.ts, app.py…)
-   │           └── Cap: 120 files, 512 KB per file
+   │           └── Cap: 120 files, 512 KB per file (from core/config.py)
    ├── [40%]  Chunk files → HuggingFace embeddings → FAISS index
-   ├── [50%]  ai_engine.py — multi-query retrieval (5 queries × k=8, deduplicated)
+   ├── [50%]  services/ai_engine.py — multi-query retrieval (5 queries × k=8, deduplicated)
    ├── [70%]  Groq LLM call (llama-3.3-70b, temp=0.1, max_tokens=2048)
    │           └── RSCIT prompt: Role → Situation → Chain-of-Thought → Instructions → Template
    ├── [88%]  Parse + validate JSON response

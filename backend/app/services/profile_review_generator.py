@@ -1,10 +1,8 @@
-import os
 import json
 from groq import Groq
 
-# ─────────────────────────────────────────────────────────────────────────────
-# System prompt: authoritative, no buzzwords, strengths-first, concrete output
-# ─────────────────────────────────────────────────────────────────────────────
+from app.core.config import settings
+
 REVIEW_SYSTEM_PROMPT = """You are a Principal Engineer at a top-tier tech company reviewing a developer's GitHub profile for a senior hire.
 
 CRITICAL RULES — read before writing a single word:
@@ -72,19 +70,19 @@ Schema:
       "effort": "15 min | 1 hr | 2–3 hrs | 1 day"
     }
   ]
-}
-"""
+}"""
 
 
 class ProfileReviewGenerator:
     def __init__(self):
-        self.groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        self.groq_client = Groq(api_key=settings.GROQ_API_KEY)
+
+    # ── Prompt builders ───────────────────────────────────────────────────────
 
     def _build_profile_prompt(self, profile_data: dict) -> str:
         lang_breakdown = profile_data.get("language_breakdown", {})
         lang_str = ", ".join(
-            f"{lang} ({count} repos)"
-            for lang, count in list(lang_breakdown.items())[:10]
+            f"{lang} ({count} repos)" for lang, count in list(lang_breakdown.items())[:10]
         ) or "None detected"
 
         return f"""Analyse this GitHub profile and return the JSON described in the system prompt.
@@ -97,7 +95,7 @@ Followers      : {profile_data.get('followers', 0)}
 Public Repos   : {profile_data.get('public_repos_count', 0)}
 Total Stars    : {profile_data.get('total_stars', 0)}
 Top Language   : {profile_data.get('top_language', 'None')}
-Language Breakdown (by repo count): {lang_str}
+Language Breakdown: {lang_str}
 Recent Repos   : {', '.join(profile_data.get('recent_repos', []))}
 Commits in last 100 events : {profile_data.get('recent_commits_in_last_100_events', 0)}
 Issues / PRs in last 100 events : {profile_data.get('recent_issues_prs', 0)}
@@ -106,8 +104,7 @@ Issues / PRs in last 100 events : {profile_data.get('recent_issues_prs', 0)}
     def _build_suggestions_prompt(self, profile_data: dict) -> str:
         lang_breakdown = profile_data.get("language_breakdown", {})
         lang_str = ", ".join(
-            f"{lang} ({count} repos)"
-            for lang, count in list(lang_breakdown.items())[:8]
+            f"{lang} ({count} repos)" for lang, count in list(lang_breakdown.items())[:8]
         ) or "None"
 
         return f"""GitHub profile data for @{profile_data.get('username')}:
@@ -122,15 +119,16 @@ Issues / PRs in last 100 events : {profile_data.get('recent_issues_prs', 0)}
 Give 5 specific, actionable improvements for this exact profile.
 """
 
+    # ── Main methods ──────────────────────────────────────────────────────────
+
     def generate_review(self, profile_data: dict) -> dict:
-        prompt = self._build_profile_prompt(profile_data)
         try:
             completion = self.groq_client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": REVIEW_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": self._build_profile_prompt(profile_data)},
                 ],
-                model="llama-3.3-70b-versatile",
+                model=settings.GROQ_MODEL,
                 temperature=0.2,
                 max_tokens=1200,
                 response_format={"type": "json_object"},
@@ -145,21 +143,19 @@ Give 5 specific, actionable improvements for this exact profile.
             return self._fallback_review()
 
     def generate_ai_suggestions(self, profile_data: dict) -> list:
-        prompt = self._build_suggestions_prompt(profile_data)
         try:
             completion = self.groq_client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": AI_SUGGESTIONS_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": self._build_suggestions_prompt(profile_data)},
                 ],
-                model="llama-3.3-70b-versatile",
+                model=settings.GROQ_MODEL,
                 temperature=0.3,
                 max_tokens=800,
                 response_format={"type": "json_object"},
             )
             raw = completion.choices[0].message.content.strip()
             parsed = json.loads(raw)
-            # Handle {"suggestions": [...]} or bare list
             if isinstance(parsed, list):
                 return parsed
             for v in parsed.values():
@@ -170,7 +166,8 @@ Give 5 specific, actionable improvements for this exact profile.
             print(f"[ProfileReviewGenerator] generate_ai_suggestions failed: {e}")
             return []
 
-    # ── fallback ──────────────────────────────────────────────────────────────
+    # ── Fallback ──────────────────────────────────────────────────────────────
+
     def _fallback_review(self) -> dict:
         return {
             "user_summary": "Unable to generate summary due to a backend error.",
@@ -181,12 +178,8 @@ Give 5 specific, actionable improvements for this exact profile.
             "github_streak_estimate": "Unknown",
             "total_contributions_estimate": "Unknown",
             "code_quality_radar": {
-                "readability": 50,
-                "architecture": 50,
-                "testing": 50,
-                "documentation": 50,
-                "consistency": 50,
-                "open_source": 50,
+                "readability": 50, "architecture": 50, "testing": 50,
+                "documentation": 50, "consistency": 50, "open_source": 50,
             },
             "ai_suggestions": [],
         }
