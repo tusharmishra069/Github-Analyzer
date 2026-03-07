@@ -64,8 +64,8 @@ A comedian's take on your GitHub profile. Cruel, specific, and oddly motivating.
 ### 1. Clone
 
 ```bash
-git clone https://github.com/your-username/ai-code-analyzer.git
-cd ai-code-analyzer
+git clone https://github.com/your-username/github-analyzer.git
+cd github-analyzer
 ```
 
 ### 2. Backend Setup
@@ -154,7 +154,7 @@ curl -X POST http://localhost:8000/api/profile-review \
 ## Project Structure
 
 ```
-ai-code-analyzer/
+github-analyzer/
 ├── backend/
 │   ├── main.py                        API routes + Pydantic schemas
 │   ├── database.py                    SQLAlchemy engine (Neon Postgres)
