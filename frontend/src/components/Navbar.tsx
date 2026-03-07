@@ -19,9 +19,12 @@ export function Navbar() {
                     <span>CodeAnalyzer</span>
                 </Link>
 
-                <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+                <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
                     <Link href="/#features" className="hover:text-slate-900 transition-colors">Features</Link>
                     <Link href="/#pricing" className="hover:text-slate-900 transition-colors">Pricing</Link>
+                    <Link href="/repo-analysis" className="hover:text-slate-900 transition-colors">Code Analysis</Link>
+                    <Link href="/profile-review" className="hover:text-slate-900 transition-colors">Profile Review</Link>
+                    <Link href="/profile-roast" className="hover:text-slate-900 transition-colors">Roast</Link>
                 </nav>
 
                 <div className="flex items-center gap-4">

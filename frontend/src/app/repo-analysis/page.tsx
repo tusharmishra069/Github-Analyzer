@@ -13,15 +13,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Navbar } from "@/components/Navbar";
 import { ThreeDScene } from "@/components/ThreeDScene";
+import { CrossFeatureNav } from "@/components/CrossFeatureNav";
+import { Footer } from "@/components/Footer";
 
 // ─── Sidebar nav items (mirrors InteractiveDashboard) ─────────────────────────
 const reportNavItems = [
     { icon: <LayoutDashboard className="w-4 h-4" />, label: "Overview" },
-    { icon: <Activity className="w-4 h-4" />,        label: "Analytics" },
-    { icon: <GitBranch className="w-4 h-4" />,       label: "Repositories" },
-    { icon: <ShieldCheck className="w-4 h-4" />,     label: "Security" },
-    { icon: <Database className="w-4 h-4" />,        label: "Data" },
-    { icon: <Settings className="w-4 h-4" />,        label: "Settings" },
+    { icon: <Activity className="w-4 h-4" />, label: "Analytics" },
+    { icon: <GitBranch className="w-4 h-4" />, label: "Repositories" },
+    { icon: <ShieldCheck className="w-4 h-4" />, label: "Security" },
+    { icon: <Database className="w-4 h-4" />, label: "Data" },
+    { icon: <Settings className="w-4 h-4" />, label: "Settings" },
 ];
 
 type JobState = "idle" | "processing" | "complete" | "error";
@@ -30,12 +32,12 @@ type JobState = "idle" | "processing" | "complete" | "error";
 function HealthRing({ score, inView }: { score: string; inView: boolean }) {
     const gradeColor: Record<string, { stroke: string; glow: string; text: string }> = {
         "A+": { stroke: "#10b981", glow: "rgba(16,185,129,0.25)", text: "text-emerald-600" },
-        "A":  { stroke: "#10b981", glow: "rgba(16,185,129,0.20)", text: "text-emerald-600" },
+        "A": { stroke: "#10b981", glow: "rgba(16,185,129,0.20)", text: "text-emerald-600" },
         "B+": { stroke: "#6366f1", glow: "rgba(99,102,241,0.25)", text: "text-indigo-600" },
-        "B":  { stroke: "#6366f1", glow: "rgba(99,102,241,0.20)", text: "text-indigo-600" },
-        "C":  { stroke: "#f59e0b", glow: "rgba(245,158,11,0.25)", text: "text-amber-600" },
-        "D":  { stroke: "#f43f5e", glow: "rgba(244,63,94,0.25)",  text: "text-rose-600" },
-        "F":  { stroke: "#ef4444", glow: "rgba(239,68,68,0.25)",  text: "text-red-600" },
+        "B": { stroke: "#6366f1", glow: "rgba(99,102,241,0.20)", text: "text-indigo-600" },
+        "C": { stroke: "#f59e0b", glow: "rgba(245,158,11,0.25)", text: "text-amber-600" },
+        "D": { stroke: "#f43f5e", glow: "rgba(244,63,94,0.25)", text: "text-rose-600" },
+        "F": { stroke: "#ef4444", glow: "rgba(239,68,68,0.25)", text: "text-red-600" },
     };
     const c = gradeColor[score] ?? gradeColor["B+"];
     const r = 52, cx = 64, cy = 64, circum = 2 * Math.PI * r;
@@ -101,9 +103,8 @@ function StepTracker({ progress }: { progress: number }) {
                                     <span className={active ? "text-white" : "text-slate-400"}>{step.icon}</span>
                                 )}
                             </motion.div>
-                            <span className={`text-[9px] font-semibold whitespace-nowrap ${
-                                done || active ? "text-indigo-600" : "text-slate-400"
-                            }`}>{step.label}</span>
+                            <span className={`text-[9px] font-semibold whitespace-nowrap ${done || active ? "text-indigo-600" : "text-slate-400"
+                                }`}>{step.label}</span>
                         </div>
                         {i < STEPS.length - 1 && (
                             <div className="flex-1 h-0.5 mb-4 mx-1 relative overflow-hidden rounded-full bg-slate-200">
@@ -610,8 +611,13 @@ export default function RepoAnalysisDashboard() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+                {(jobState === "idle" || jobState === "error") && <CrossFeatureNav />}
 
             </main>
+
+            <div className="w-full mt-auto">
+                <Footer />
+            </div>
         </div>
     );
 }

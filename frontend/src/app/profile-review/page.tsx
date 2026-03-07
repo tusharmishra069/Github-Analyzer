@@ -8,6 +8,7 @@ import { Search, ArrowRight, RotateCcw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ProfileReviewDashboard from '@/components/ProfileReviewDashboard';
+import { CrossFeatureNav } from '@/components/CrossFeatureNav';
 
 const LOADING_MESSAGES = [
     "Analyzing commit history...",
@@ -246,6 +247,8 @@ export default function ProfileReviewPage() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {(jobState === "idle" || jobState === "error") && <CrossFeatureNav />}
 
             </main>
 

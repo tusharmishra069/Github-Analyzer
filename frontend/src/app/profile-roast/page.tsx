@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ArrowRight, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CrossFeatureNav } from '@/components/CrossFeatureNav';
 
 const LOADING_MESSAGES = [
     "Cloning your spaghetti code...",
@@ -254,6 +255,8 @@ export default function ProfileRoastPage() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {(jobState === "idle" || jobState === "error") && <CrossFeatureNav />}
 
             </main>
 
