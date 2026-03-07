@@ -86,6 +86,50 @@ class RoastResponse(BaseModel):
     stats: dict
     roast: RoastData
 
+class ProfileReviewRequest(BaseModel):
+    username: str
+    
+class Achievement(BaseModel):
+    emoji: str
+    title: str
+
+class RadarMetrics(BaseModel):
+    readability: int
+    architecture: int
+    testing: int
+    documentation: int
+    consistency: int
+    open_source: int
+
+class ProfileReviewData(BaseModel):
+    user_summary: str
+    inferred_skills: list[str]
+    achievements: list[Achievement]
+    hireability_grade: str
+    hireability_reasoning: str
+    github_streak_estimate: str
+    total_contributions_estimate: str
+    code_quality_radar: RadarMetrics
+    ai_suggestions: list[str] = []
+
+class ProfileReviewResponse(BaseModel):
+    username: str
+    avatar_url: Optional[str] = None
+    stats: dict
+    review: ProfileReviewData
+
+class AiSuggestion(BaseModel):
+    priority: int
+    icon: str
+    title: str
+    detail: str
+    effort: str
+
+class AiSuggestionsResponse(BaseModel):
+    username: str
+    suggestions: list[AiSuggestion]
+
+
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -166,4 +210,70 @@ def handle_roast(req: RoastRequest):
             "top_language": profile_data.get("top_language", "None")
         },
         roast=roast_data
+    )
+
+
+@app.post("/api/profile-review", response_model=ProfileReviewResponse)
+def handle_profile_review(req: ProfileReviewRequest):
+    """Generate a structured, professional review for a GitHub profile."""
+    try:
+        from github_service import fetch_github_profile
+        profile_data = fetch_github_profile(req.username)
+    except ValueError as e:
+        import logging
+        logging.error(f"GitHub fetch failed: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        import logging
+        logging.error(f"GitHub fetch error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch GitHub profile")
+        
+    try:
+        from profile_review_generator import ProfileReviewGenerator
+        generator = ProfileReviewGenerator()
+        review_data = generator.generate_review(profile_data)
+    except Exception as e:
+        import logging
+        logging.error(f"Review generation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate review: {str(e)}")
+    
+    return ProfileReviewResponse(
+        username=profile_data["username"],
+        avatar_url=profile_data.get("avatar_url"),
+        stats={
+            "followers": profile_data.get("followers", 0),
+            "public_repos": profile_data.get("public_repos_count", 0),
+            "total_stars": profile_data.get("total_stars", 0),
+            "top_language": profile_data.get("top_language", "None"),
+            "language_breakdown": profile_data.get("language_breakdown", {}),
+        },
+        review=review_data
+    )
+
+
+@app.post("/api/profile-suggestions", response_model=AiSuggestionsResponse)
+def handle_profile_suggestions(req: ProfileReviewRequest):
+    """Generate 5 targeted AI suggestions to improve a GitHub profile."""
+    try:
+        from github_service import fetch_github_profile
+        profile_data = fetch_github_profile(req.username)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        import logging
+        logging.error(f"GitHub fetch error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch GitHub profile")
+
+    try:
+        from profile_review_generator import ProfileReviewGenerator
+        generator = ProfileReviewGenerator()
+        suggestions = generator.generate_ai_suggestions(profile_data)
+    except Exception as e:
+        import logging
+        logging.error(f"AI suggestions error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate suggestions: {str(e)}")
+
+    return AiSuggestionsResponse(
+        username=profile_data["username"],
+        suggestions=suggestions,
     )
