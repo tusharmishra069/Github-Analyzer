@@ -23,7 +23,7 @@ loglevel = "warning"
 access_log_format = '%(h)s "%(r)s" %(s)s %(b)s %(D)sµs'
 
 # ── Process naming ─────────────────────────────────────────────────────────────
-proc_name = "ai-code-analyzer"
+proc_name = "Github-analyzer"
 
 # ── Security ──────────────────────────────────────────────────────────────────
 limit_request_line = 8190

@@ -81,6 +81,7 @@ def analyze_github_repo(job_id: str, repository_url: str) -> None:
         health = final_result.get("health_score", "?")
         bug_count = len(final_result.get("bugs", []))
         imp_count = len(final_result.get("improvements", []))
+        job.result = final_result   # set result BEFORE committing COMPLETED status
         _update_job(
             db, job,
             status="COMPLETED",
@@ -91,8 +92,6 @@ def analyze_github_repo(job_id: str, repository_url: str) -> None:
                 f"{imp_count} improvement{'s' if imp_count != 1 else ''} suggested."
             ),
         )
-        job.result = final_result
-        db.commit()
 
     except Exception as e:
         traceback.print_exc()
