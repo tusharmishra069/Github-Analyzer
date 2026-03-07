@@ -5,65 +5,156 @@ import stat
 from git import Repo
 from pathlib import Path
 
-# Common file extensions we want to analyze (excluding binaries, lockfiles, etc.)
+# ---------------------------------------------------------------------------
+# File type allow-list — source code only, no binaries or lock files
+# ---------------------------------------------------------------------------
 ALLOWED_EXTENSIONS = {
-    ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".c", ".cpp", ".cs", 
-    ".go", ".rs", ".rb", ".php", ".html", ".css", ".md", ".json", ".yml", ".yaml"
+    ".py", ".js", ".jsx", ".ts", ".tsx",
+    ".java", ".c", ".cpp", ".cs",
+    ".go", ".rs", ".rb", ".php",
+    ".html", ".css", ".scss",
+    ".md", ".json", ".yml", ".yaml", ".toml",
+    ".sh", ".env.example",
 }
 
+# ---------------------------------------------------------------------------
+# Directories to skip entirely during traversal
+# ---------------------------------------------------------------------------
+SKIP_DIRS = {
+    ".git", ".github", ".svn", ".hg",
+    "node_modules", "vendor", "venv", ".venv", "env",
+    "dist", "build", "out", "target", ".next", ".nuxt",
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "coverage", ".coverage", "htmlcov",
+    "migrations",
+    "fixtures", "seeds", "mocks", "__mocks__",
+    ".idea", ".vscode", ".DS_Store",
+}
+
+# ---------------------------------------------------------------------------
+# File name patterns to skip (generated, test data, config noise)
+# ---------------------------------------------------------------------------
+SKIP_FILE_PATTERNS = {
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "poetry.lock", "Pipfile.lock", "Gemfile.lock", "composer.lock",
+    "bun.lockb", ".DS_Store", "Thumbs.db",
+}
+
+# ---------------------------------------------------------------------------
+# Entry-point files get priority — loaded first so they anchor the analysis
+# ---------------------------------------------------------------------------
+ENTRY_POINT_NAMES = {
+    "main.py", "app.py", "server.py", "wsgi.py", "asgi.py",
+    "index.ts", "index.js", "server.ts", "server.js",
+    "app.ts", "app.js", "main.ts", "main.js",
+    "manage.py",
+    "routes.py", "router.py",
+    "models.py", "schema.py", "schemas.py",
+    "config.py", "settings.py",
+    "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+    "README.md",
+}
+
+MAX_FILE_SIZE_BYTES = 512 * 1024   # 512 KB
+MAX_FILE_COUNT = 120               # Cap to avoid embedding explosion on monorepos
+
+
 def remove_readonly(func, path, excinfo):
-    """Wait and remove read-only files during shutil.rmtree on Windows/Mac."""
+    """Allow rmtree to delete read-only files on macOS/Windows."""
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
+
 def clone_repository(repo_url: str) -> str:
-    """Clones a repository into a temporary directory and returns the path."""
+    """Shallow-clones a repository into a temp directory and returns the path."""
     temp_dir = tempfile.mkdtemp(prefix="ai_code_analyzer_")
     try:
         print(f"Cloning {repo_url} into {temp_dir}...")
-        Repo.clone_from(repo_url, temp_dir, depth=1) # Shallow clone for speed
+        Repo.clone_from(repo_url, temp_dir, depth=1)
         return temp_dir
     except Exception as e:
         cleanup_repository(temp_dir)
         raise RuntimeError(f"Failed to clone repository: {str(e)}")
 
+
 def cleanup_repository(repo_dir: str):
-    """Deletes the cloned repository."""
+    """Deletes a cloned repository directory."""
     if os.path.exists(repo_dir):
         shutil.rmtree(repo_dir, onerror=remove_readonly)
 
+
+def _is_test_file(path: Path) -> bool:
+    """Heuristic: skip obvious test/spec files to focus on production code."""
+    name = path.name.lower()
+    return (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or name.endswith(".test.ts")
+        or name.endswith(".test.js")
+        or name.endswith(".spec.ts")
+        or name.endswith(".spec.js")
+        or "/__tests__/" in str(path)
+        or "/tests/" in str(path).lower()
+    )
+
+
 def parse_codebase(repo_dir: str) -> list[dict]:
     """
-    Walks through the repository, reading allowed files.
-    Returns a list of dicts: [{"path": "...", "content": "..."}]
+    Walks the repository and returns a list of {"path": str, "content": str}
+    dicts, ordered so that entry-point files come first.
+
+    Limits:
+    - Max file size: 512 KB
+    - Max file count: 120
+    - Skips lock files, test files, generated directories
     """
-    documents = []
     repo_path = Path(repo_dir)
+    entry_docs: list[dict] = []
+    regular_docs: list[dict] = []
 
     for root, dirs, files in os.walk(repo_path):
-        # Skip hidden directories like .git
-        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', 'venv', 'dist', 'build', '__pycache__')]
+        dirs[:] = [
+            d for d in dirs
+            if d not in SKIP_DIRS and not d.startswith('.')
+        ]
 
-        for file in files:
-            file_ext = Path(file).suffix
-            if file_ext in ALLOWED_EXTENSIONS:
-                file_path = Path(root) / file
-                try:
-                    # Ignore overly large files (e.g > 1MB)
-                    if os.path.getsize(file_path) > 1024 * 1024:
-                        continue
+        for file in sorted(files):
+            file_path = Path(root) / file
 
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
-                        
-                    # Store path relative to repo root
-                    rel_path = file_path.relative_to(repo_path)
-                    documents.append({
-                        "path": str(rel_path),
-                        "content": content
-                    })
-                except Exception as e:
-                    print(f"Skipping file {file_path} due to error: {e}")
-                    pass
+            if file in SKIP_FILE_PATTERNS:
+                continue
 
-    return documents
+            if file_path.suffix not in ALLOWED_EXTENSIONS:
+                continue
+
+            if _is_test_file(file_path):
+                continue
+
+            try:
+                if os.path.getsize(file_path) > MAX_FILE_SIZE_BYTES:
+                    print(f"[repo_parser] Skipping large file: {file_path.relative_to(repo_path)}")
+                    continue
+            except OSError:
+                continue
+
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="ignore")
+            except Exception as e:
+                print(f"[repo_parser] Skipping unreadable file {file_path}: {e}")
+                continue
+
+            rel_path = str(file_path.relative_to(repo_path))
+            doc = {"path": rel_path, "content": content}
+
+            if file in ENTRY_POINT_NAMES:
+                entry_docs.append(doc)
+            else:
+                regular_docs.append(doc)
+
+    all_docs = entry_docs + regular_docs
+    if len(all_docs) > MAX_FILE_COUNT:
+        print(f"[repo_parser] Capping at {MAX_FILE_COUNT} files (found {len(all_docs)}).")
+        all_docs = all_docs[:MAX_FILE_COUNT]
+
+    print(f"[repo_parser] Parsed {len(all_docs)} files ({len(entry_docs)} entry points).")
+    return all_docs

@@ -5,28 +5,115 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from groq import Groq
 import json
-import re
+
+# ---------------------------------------------------------------------------
+# Targeted retrieval queries — each probes a different dimension of quality
+# ---------------------------------------------------------------------------
+RETRIEVAL_QUERIES = [
+    "entry point main application server setup startup routing middleware",
+    "database models schema ORM queries migrations data layer",
+    "authentication authorization security validation error handling",
+    "external API integrations third-party services environment configuration secrets",
+    "business logic core algorithms data processing patterns design",
+]
+
+# ---------------------------------------------------------------------------
+# System prompt — Staff-Engineer-grade review using RSCIT framework
+# ---------------------------------------------------------------------------
+ANALYSIS_SYSTEM_PROMPT = """You are a Staff Engineer with 15+ years of experience conducting architecture and security reviews at companies like Google, Stripe, and Airbnb. You specialize in identifying production risks, security vulnerabilities, and architectural anti-patterns across any language or framework.
+
+Your reviews are trusted by CTOs because they are:
+- Concrete: every finding references a specific file or pattern from the code
+- Actionable: every bug has a fix, every improvement has a clear next step
+- Calibrated: severity/priority levels are accurate, not inflated
+- Honest: you give real grades — a messy codebase gets a D, not a B"""
+
+ANALYSIS_USER_TEMPLATE = """## TASK
+Perform a thorough Staff Engineer code review of the codebase segments below.
+
+## CODEBASE CONTEXT
+The following chunks were retrieved from multiple files across the repository. Each chunk is labeled with its source file path.
+
+{context}
+
+## ANALYSIS INSTRUCTIONS
+
+Think through the following dimensions before producing output:
+
+1. **Architecture** — What is the overall structure? Is there a clear separation of concerns? Any god objects, circular dependencies, or missing abstraction layers?
+
+2. **Security** — Scan for: hardcoded secrets, SQL/command injection vectors, missing auth checks, insecure defaults, exposed sensitive data in logs or responses.
+
+3. **Reliability** — Look for: missing error handling, unhandled promise rejections, no retry logic, silent failures, race conditions, resource leaks.
+
+4. **Code Quality** — Identify: dead code, duplicated logic, overly complex functions, magic numbers/strings, missing type hints, misleading variable names.
+
+5. **Performance** — Flag: N+1 queries, blocking I/O in async context, missing indexes implied by query patterns, unbounded loops, no pagination.
+
+6. **Tech Stack** — Identify all detected languages, frameworks, and key libraries.
+
+## HEALTH SCORE RUBRIC
+- **A+**: Production-ready, clean architecture, no critical issues, strong security posture
+- **A**: Minor improvements needed, no critical bugs, good patterns
+- **B+**: Some improvements needed, no critical security issues, reasonable structure
+- **B**: Several issues, moderate tech debt, needs refactoring
+- **C**: Significant problems, some security concerns, notable tech debt
+- **D**: Serious bugs and security issues, poor architecture, needs major rework
+- **F**: Critical vulnerabilities, broken logic, or fundamentally flawed architecture
+
+## OUTPUT FORMAT
+Return ONLY a valid JSON object. No markdown, no explanation, no ```json fences. The JSON must match this exact schema:
+
+{{
+  "health_score": "<A+|A|B+|B|C|D|F>",
+  "health_reasoning": "<1-2 sentences explaining why this score was given>",
+  "tech_stack": ["<framework or library>", "..."],
+  "architecture_summary": "<2-3 sentences describing the overall architecture, data flow, and key design decisions>",
+  "bugs": [
+    {{
+      "title": "<concise bug title>",
+      "severity": "<CRITICAL|HIGH|MEDIUM|LOW>",
+      "description": "<specific explanation of the issue and where it occurs>",
+      "file_hint": "<filename or pattern where this appears, or 'multiple files'>",
+      "fix": "<concrete, actionable fix in 1-2 sentences>"
+    }}
+  ],
+  "improvements": [
+    {{
+      "title": "<improvement title>",
+      "priority": "<HIGH|MEDIUM|LOW>",
+      "description": "<specific suggestion with context from the code>",
+      "effort": "<Low|Medium|High>"
+    }}
+  ]
+}}
+
+RULES:
+- Include 2-6 bugs (only real issues — do not invent bugs not visible in the code)
+- Include 3-6 improvements (real architectural or quality suggestions)
+- Reference actual file names from the context in bug file_hints
+- Do NOT include markdown code fences or any text outside the JSON object"""
+
 
 class CodeAnalyzer:
     def __init__(self):
-        # We use a fast, local embedding model from HuggingFace to avoid API costs on massive codebases
+        # Fast local embedding model — avoids API costs on large codebases
         self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         self.groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        
-    def create_vector_store(self, code_documents: list[dict]):
+
+    def create_vector_store(self, code_documents: list[dict]) -> FAISS:
         """
-        Takes raw codebase files, chunks them logically, and stores them in a FAISS vector store.
+        Chunks codebase files using code-aware separators and builds a FAISS vector store.
+        Larger chunks (1200 tokens) preserve more function/class context per retrieval hit.
         """
         print("Chunking documents...")
-        # Code usually needs specific splitting strategies. We use RecursiveCharacterTextSplitter 
-        # tuned slightly for code (looking for newlines, brackets, etc.)
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=800,
-            chunk_overlap=50,
-            separators=["\nclass ", "\ndef ", "\nfunction ", "\n\n", "\n", " ", ""]
+            chunk_size=1200,
+            chunk_overlap=150,
+            separators=["\nclass ", "\ndef ", "\nfunction ", "\nexport ", "\n\n", "\n", " ", ""]
         )
-        
-        docs = []
+
+        docs: list[Document] = []
         for doc in code_documents:
             chunks = text_splitter.split_text(doc["content"])
             for chunk in chunks:
@@ -34,71 +121,75 @@ class CodeAnalyzer:
                     page_content=chunk,
                     metadata={"source": doc["path"]}
                 ))
-        
+
         print(f"Created {len(docs)} chunks. Embedding into FAISS...")
-        # Create the vector store
-        vectorstore = FAISS.from_documents(
-            documents=docs, 
-            embedding=self.embeddings
-        )
-        
+        vectorstore = FAISS.from_documents(documents=docs, embedding=self.embeddings)
         return vectorstore
 
-    def analyze_codebase(self, vectorstore) -> dict:
+    def _multi_query_retrieve(self, vectorstore: FAISS, k_per_query: int = 8) -> str:
         """
-        Queries the Groq LLM using the vector store for context to generate a comprehensive report.
+        Runs multiple targeted retrieval queries to maximize coverage across
+        architecture, security, data layer, and business logic dimensions.
+        Deduplicates by source+content to avoid redundant context.
         """
-        # Let's get the 5 most central/important chunks to represent the core architecture
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
-        docs = retriever.invoke("core architecture main logic API database setup configuration")
-        
-        context = "\n\n".join([f"--- FILE: {doc.metadata['source']} ---\n{doc.page_content}" for doc in docs])
-        
-        prompt = f"""
-        You are an expert Principal Software Engineer performing a code review. 
-        Analyze the following segments of a larger codebase. 
+        seen: set[str] = set()
+        all_chunks: list[str] = []
 
-        CODE CONTEXT:
-        {context}
+        for query in RETRIEVAL_QUERIES:
+            docs = vectorstore.similarity_search(query, k=k_per_query)
+            for doc in docs:
+                dedup_key = doc.metadata["source"] + doc.page_content[:120]
+                if dedup_key not in seen:
+                    seen.add(dedup_key)
+                    all_chunks.append(
+                        f"### FILE: {doc.metadata['source']}\n{doc.page_content}"
+                    )
 
-        INSTRUCTIONS:
-        Based solely on the provided context, please output a JSON object representing your code review.
-        The JSON MUST have the exact following structure:
-        {{
-            "health_score": "A string containing a letter grade (A+, A, B, C, D, F)",
-            "architecture_summary": "A concise paragraph explaining the tech stack, key components, and how they relate.",
-            "bugs": [
-                {{"title": "Bug name", "description": "Specific explanation and location"}}
-            ],
-            "improvements": [
-                {{"title": "Improvement title", "description": "Specific refactoring or architectural suggestion"}}
-            ]
-        }}
-        
-        IMPORTANT: Return ONLY valid, parseable JSON. Do not include markdown blocks like ```json.
+        print(f"Multi-query retrieval: {len(all_chunks)} unique chunks assembled for LLM context.")
+        return "\n\n---\n\n".join(all_chunks)
+
+    def analyze_codebase(self, vectorstore: FAISS) -> dict:
         """
+        Runs multi-query RAG retrieval then sends an elite Staff Engineer
+        system prompt to Groq for a comprehensive codebase review.
+        """
+        context = self._multi_query_retrieve(vectorstore, k_per_query=8)
 
-        print("Querying Groq LLM for codebase insight...")
+        user_message = ANALYSIS_USER_TEMPLATE.format(context=context)
+
+        print("Querying Groq LLM for deep codebase analysis...")
         chat_completion = self.groq_client.chat.completions.create(
-            messages=[{"role": "system", "content": prompt}],
-            model="llama-3.1-8b-instant",  # Very fast open source model on Groq
-            temperature=0.2
+            messages=[
+                {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=0.1,
+            max_tokens=2048,
         )
-        
+
         response_text = chat_completion.choices[0].message.content.strip()
-        
-        # Clean up in case the LLM returned markdown despite instructions
+
         try:
             start = response_text.find('{')
             end = response_text.rfind('}') + 1
-            if start != -1 and end != 0:
+            if start != -1 and end > start:
                 response_text = response_text[start:end]
-            return json.loads(response_text)
-        except json.JSONDecodeError as e:
-            print(f"Failed to parse LLM response as JSON: {response_text}")
+            result = json.loads(response_text)
+            result.setdefault("health_score", "N/A")
+            result.setdefault("health_reasoning", "")
+            result.setdefault("tech_stack", [])
+            result.setdefault("architecture_summary", "")
+            result.setdefault("bugs", [])
+            result.setdefault("improvements", [])
+            return result
+        except json.JSONDecodeError:
+            print(f"[ai_engine] JSON parse failed. Raw response:\n{response_text[:500]}")
             return {
                 "health_score": "N/A",
-                "architecture_summary": "Failed to parse architecture summary from LLM.",
+                "health_reasoning": "Analysis could not be parsed.",
+                "tech_stack": [],
+                "architecture_summary": "The AI model returned an unparseable response. Please try again.",
                 "bugs": [],
-                "improvements": []
+                "improvements": [],
             }

@@ -20,11 +20,11 @@ export default function Home() {
       <Navbar />
 
       {/* ── Ambient background blobs ── */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      {/* <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full bg-indigo-100/40 blur-[120px]" />
         <div className="absolute top-[40%] -right-60 w-[500px] h-[500px] rounded-full bg-violet-100/30 blur-[100px]" />
         <div className="absolute top-[60%] -left-60 w-[400px] h-[400px] rounded-full bg-sky-100/30 blur-[100px]" />
-      </div>
+      </div> */}
 
       <main className="flex flex-col items-center w-full">
 
@@ -191,7 +191,7 @@ export default function Home() {
             FEATURES / PRICING / FOOTER
         ════════════════════════════════════════════════ */}
         <div className="relative z-10 bg-white w-full">
-          {/* <Features /> */}
+          <Features />
           {/* <Pricing /> */}
           <Footer />
         </div>

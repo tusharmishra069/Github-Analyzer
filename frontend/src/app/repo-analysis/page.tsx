@@ -189,11 +189,11 @@ export default function RepoAnalysisDashboard() {
             <Navbar />
 
             {/* ── Ambient background blobs (same as landing) ── */}
-            <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+            {/* <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
                 <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full bg-indigo-100/40 blur-[120px]" />
                 <div className="absolute top-[40%] -right-60 w-[500px] h-[500px] rounded-full bg-violet-100/30 blur-[100px]" />
                 <div className="absolute top-[60%] -left-60 w-[400px] h-[400px] rounded-full bg-sky-100/30 blur-[100px]" />
-            </div>
+            </div> */}
 
             <main className="flex-1 w-full max-w-6xl mx-auto px-6 pt-32 pb-24 relative z-10 flex flex-col items-center">
 
@@ -211,7 +211,7 @@ export default function RepoAnalysisDashboard() {
                             {/* 3D scene behind hero text */}
                             <ThreeDScene />
                             {/* Grid fade mask */}
-                            <div className="absolute top-0 left-0 w-full h-[420px] bg-gradient-to-b from-white/50 via-white/30 to-transparent pointer-events-none z-0" />
+                            {/* <div className="absolute top-0 left-0 w-full h-[420px] bg-gradient-to-b from-white/50 via-white/30 to-transparent pointer-events-none z-0" /> */}
 
                             <div className="relative z-10 flex flex-col items-center">
                                 {/* Badge */}
