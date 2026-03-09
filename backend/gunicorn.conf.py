@@ -2,8 +2,8 @@
 import os
 
 # ── Binding ───────────────────────────────────────────────────────────────────
-# Render injects a dynamic PORT env var — must be respected or health checks fail
-port = os.environ.get("PORT", "8000")
+# Render injects PORT=10000 by default — must match or health checks fail
+port = os.environ.get("PORT", "10000")
 bind = f"0.0.0.0:{port}"
 
 # ── Workers ───────────────────────────────────────────────────────────────────

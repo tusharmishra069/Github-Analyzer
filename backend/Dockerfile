@@ -35,12 +35,12 @@ COPY . .
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 8000
+EXPOSE 10000
 
 ENV APP_ENV=production \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PORT=8000
+    PORT=10000
 
-# Shell form so $PORT is evaluated at container start (Render overrides PORT)
+# Shell form so $PORT is evaluated at container start (Render injects PORT=10000)
 CMD gunicorn main:app -c gunicorn.conf.py
