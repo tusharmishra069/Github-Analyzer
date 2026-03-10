@@ -32,9 +32,12 @@ from slowapi.util import get_remote_address
 from app.core.config import settings
 
 
-def _get_real_ip(request) -> str:  # type: ignore[override]
+def _get_real_ip(request) -> str | None:  # type: ignore[override]
     """
     Extract the real client IP, honouring common reverse-proxy headers.
+
+    Returns None for OPTIONS requests so slowapi skips rate-limiting CORS
+    preflights — they must pass through to CORSMiddleware untouched.
 
     Priority:
       1. X-Forwarded-For first hop (set by nginx / cloud load balancers)
@@ -44,6 +47,9 @@ def _get_real_ip(request) -> str:  # type: ignore[override]
     We take only the *first* value in X-Forwarded-For to prevent IP spoofing
     via appending fake IPs to a multi-hop header.
     """
+    if request.method == "OPTIONS":
+        return None  # slowapi skips limiting when key_func returns None
+
     xff = request.headers.get("X-Forwarded-For")
     if xff:
         return xff.split(",")[0].strip()

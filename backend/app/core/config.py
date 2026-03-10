@@ -28,7 +28,7 @@ class Settings:
     # Comma-separated origins. In production never use "*".
     # Dev default allows the local Next.js dev server only.
     ALLOWED_ORIGINS: list[str] = [
-        o.strip()
+        o.strip().rstrip("/")
         for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
         if o.strip()
     ]

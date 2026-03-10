@@ -48,28 +48,16 @@ app = FastAPI(
     openapi_url=None if settings.is_production else "/openapi.json",
 )
 
-# ── Rate limiter ──────────────────────────────────────────────────────────────
-# Must be attached before other middleware so 429s bypass the rest of the stack
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
-
 # ── CORS ──────────────────────────────────────────────────────────────────────
-# Security notes:
-#   - allow_credentials=True is safe only when origins are explicit (never "*")
-#   - In dev the default ALLOWED_ORIGINS is ["http://localhost:3000"]
-#   - In prod it must be set via the ALLOWED_ORIGINS env var
+# MUST be registered BEFORE SlowAPIMiddleware so OPTIONS preflight requests are
+# handled here and never reach the rate limiter (which would reject them).
 _wildcard_only = settings.ALLOWED_ORIGINS == ["*"]
+_allow_credentials = not _wildcard_only
 if _wildcard_only:
-    # Wildcard + credentials is forbidden by the CORS spec and rejected by
-    # browsers. Fall back to credentials=False to avoid a hard browser error.
-    _allow_credentials = False
     logger.warning(
         "ALLOWED_ORIGINS='*' — running with credentials=False. "
         "Set explicit origins for authenticated requests."
     )
-else:
-    _allow_credentials = True
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,8 +66,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
     expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
-    max_age=600,   # preflight cache 10 min
+    max_age=600,
 )
+
+# ── Rate limiter ──────────────────────────────────────────────────────────────
+# Registered AFTER CORSMiddleware so OPTIONS preflights are already resolved.
+# _get_real_ip() also returns None for OPTIONS as an extra safety net.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 
 # ── Request timing + security headers middleware ──────────────────────────────
