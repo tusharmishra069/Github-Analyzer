@@ -92,10 +92,17 @@ def parse_codebase(repo_dir: str) -> list[dict]:
     """
     Walks the repository and returns a list of {"path": str, "content": str}
     dicts, entry-point files ordered first.
+
+    Hard limits (prevents OOM on Render free tier):
+      - MAX_FILE_COUNT   — cap number of files processed
+      - MAX_FILE_SIZE_BYTES — per-file cap
+      - MAX_TOTAL_CONTENT_BYTES (4 MB) — total raw text cap across all files
     """
+    _MAX_TOTAL_CONTENT_BYTES = 4 * 1024 * 1024  # 4 MB total raw source text
     repo_path = Path(repo_dir)
     entry_docs: list[dict] = []
     regular_docs: list[dict] = []
+    total_content_bytes = 0
 
     for root, dirs, files in os.walk(repo_path):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
@@ -123,6 +130,15 @@ def parse_codebase(repo_dir: str) -> list[dict]:
                 print(f"[repo_parser] Skipping unreadable file {file_path}: {e}")
                 continue
 
+            content_bytes = len(content.encode("utf-8", errors="ignore"))
+            if total_content_bytes + content_bytes > _MAX_TOTAL_CONTENT_BYTES:
+                print(f"[repo_parser] Reached 4 MB total content cap — stopping file scan.")
+                # still return what we have instead of crashing
+                all_docs = entry_docs + regular_docs
+                print(f"[repo_parser] Parsed {len(all_docs)} files ({len(entry_docs)} entry points) [{total_content_bytes // 1024} KB total].")
+                return all_docs
+            total_content_bytes += content_bytes
+
             rel_path = str(file_path.relative_to(repo_path))
             doc = {"path": rel_path, "content": content}
 
@@ -136,5 +152,5 @@ def parse_codebase(repo_dir: str) -> list[dict]:
         print(f"[repo_parser] Capping at {settings.MAX_FILE_COUNT} files (found {len(all_docs)}).")
         all_docs = all_docs[: settings.MAX_FILE_COUNT]
 
-    print(f"[repo_parser] Parsed {len(all_docs)} files ({len(entry_docs)} entry points).")
+    print(f"[repo_parser] Parsed {len(all_docs)} files ({len(entry_docs)} entry points) [{total_content_bytes // 1024} KB total].")
     return all_docs

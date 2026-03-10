@@ -4,6 +4,17 @@ from app.core.database import SessionLocal
 from app.models.job import Job
 from app.services import repo_parser, ai_engine
 
+# Module-level singleton — Groq client and embedding ref created once per process.
+# Safe with preload_app=True (single worker, no forking after load).
+_analyzer: ai_engine.CodeAnalyzer | None = None
+
+
+def _get_analyzer() -> ai_engine.CodeAnalyzer:
+    global _analyzer
+    if _analyzer is None:
+        _analyzer = ai_engine.CodeAnalyzer()
+    return _analyzer
+
 
 def _update_job(db, job, *, status=None, progress=None, message=None) -> None:
     """Applies fields to a job row and commits in one call."""
@@ -63,8 +74,8 @@ def analyze_github_repo(job_id: str, repository_url: str) -> None:
             message=f"Found {file_count} source file{'s' if file_count != 1 else ''}. Generating embeddings...",
         )
 
-        # ── 4. Embed ──────────────────────────────────────────────────────────
-        analyzer = ai_engine.CodeAnalyzer()
+        # ── 4. Embed ────────────────────────────────────────────────────────────────
+        analyzer = _get_analyzer()
         vectorstore = analyzer.create_vector_store(code_documents)
 
         _update_job(

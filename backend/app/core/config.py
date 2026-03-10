@@ -20,9 +20,11 @@ class Settings:
     # ── GitHub ────────────────────────────────────────────────────────────────
     GITHUB_TOKEN: str | None = os.getenv("GITHUB_TOKEN")
 
-    # ── Repo parser limits ────────────────────────────────────────────────────
-    MAX_FILE_SIZE_BYTES: int = int(os.getenv("MAX_FILE_SIZE_BYTES", str(512 * 1024)))
-    MAX_FILE_COUNT: int = int(os.getenv("MAX_FILE_COUNT", "120"))
+    # ── Repo parser limits ────────────────────────────────────────────────────────────────
+    # Render free tier (512 MB): keep these conservative to stay in RAM.
+    # 256 KB per file, 60 files max, 4 MB total enforced in repo_parser.
+    MAX_FILE_SIZE_BYTES: int = int(os.getenv("MAX_FILE_SIZE_BYTES", str(256 * 1024)))  # 256 KB
+    MAX_FILE_COUNT: int = int(os.getenv("MAX_FILE_COUNT", "60"))
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     # Comma-separated origins. In production never use "*".

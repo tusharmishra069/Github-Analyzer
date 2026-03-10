@@ -1,11 +1,39 @@
+import hashlib
 import json
+import os
+import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Suppress noisy-but-harmless warnings
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+warnings.filterwarnings("ignore", message=".*unauthenticated.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*HuggingFaceEmbeddings.*", category=Warning)
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings  # noqa: deprecated
 from langchain_core.documents import Document
 from groq import Groq
 
 from app.core.config import settings
+
+# ── Module-level singleton — loaded once per process, shared across all jobs ──
+# On Render free tier (1 worker, preload_app=True) this means the model is
+# loaded exactly once at startup and reused for every analysis request.
+_EMBEDDINGS: HuggingFaceEmbeddings | None = None
+
+def get_embeddings() -> HuggingFaceEmbeddings:
+    global _EMBEDDINGS
+    if _EMBEDDINGS is None:
+        print("[ai_engine] Loading embedding model...")
+        _EMBEDDINGS = HuggingFaceEmbeddings(
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"batch_size": 64, "normalize_embeddings": True},
+        )
+        print("[ai_engine] Embedding model ready ✓")
+    return _EMBEDDINGS
+
 
 # ── Retrieval queries — each probes a different code quality dimension ────────
 RETRIEVAL_QUERIES = [
@@ -87,52 +115,84 @@ RULES:
 
 class CodeAnalyzer:
     def __init__(self):
-        # Delay loading HuggingFaceEmbeddings until first use.
-        # Loading it here costs ~300 MB at startup and OOMs Render's free tier.
-        self._embeddings = None
         self.groq_client = Groq(api_key=settings.GROQ_API_KEY)
 
     @property
-    def embeddings(self):
-        if self._embeddings is None:
-            print("[ai_engine] Loading embedding model (first request)...")
-            self._embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-            print("[ai_engine] Embedding model ready")
-        return self._embeddings
+    def embeddings(self) -> HuggingFaceEmbeddings:
+        # Use process-level singleton — never reload the model for a 2nd job
+        return get_embeddings()
+
+    # Maximum total bytes sent to the embedder — hard-cap to keep Render in RAM
+    _MAX_EMBED_BYTES = 2 * 1024 * 1024  # 2 MB of raw source text
 
     def create_vector_store(self, code_documents: list[dict]) -> FAISS:
-        """Chunks files using code-aware separators and builds a FAISS vector store."""
+        """Chunks files using code-aware separators and builds a FAISS vector store.
+
+        Optimisations:
+          - SHA-1 content deduplication: skips re-embedding identical files
+          - 2 MB total-content cap: prevents OOM on repos with huge generated files
+          - Code-aware separators: chunks split at class/function boundaries
+        """
         print("[ai_engine] Chunking documents...")
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1200,
-            chunk_overlap=150,
+            chunk_size=1000,
+            chunk_overlap=100,
             separators=["\nclass ", "\ndef ", "\nfunction ", "\nexport ", "\n\n", "\n", " ", ""],
         )
 
+        seen_hashes: set[str] = set()
+        total_bytes = 0
         docs: list[Document] = []
+
         for item in code_documents:
-            for chunk in splitter.split_text(item["content"]):
+            content = item["content"]
+            # Skip exact-duplicate files (same content, different paths)
+            h = hashlib.sha1(content.encode("utf-8", errors="ignore"), usedforsecurity=False).hexdigest()
+            if h in seen_hashes:
+                continue
+            seen_hashes.add(h)
+
+            # Hard-cap total embedded bytes to avoid OOM on large repos
+            content_bytes = len(content.encode("utf-8", errors="ignore"))
+            if total_bytes + content_bytes > self._MAX_EMBED_BYTES:
+                print(f"[ai_engine] Reached 2 MB embed cap — skipping remaining files.")
+                break
+            total_bytes += content_bytes
+
+            for chunk in splitter.split_text(content):
                 docs.append(Document(page_content=chunk, metadata={"source": item["path"]}))
 
-        print(f"[ai_engine] {len(docs)} chunks created. Embedding into FAISS...")
+        print(f"[ai_engine] {len(docs)} chunks from {len(seen_hashes)} unique files ({total_bytes // 1024} KB). Embedding...")
         return FAISS.from_documents(documents=docs, embedding=self.embeddings)
 
-    def _multi_query_retrieve(self, vectorstore: FAISS, k_per_query: int = 8) -> str:
+    def _multi_query_retrieve(self, vectorstore: FAISS, k_per_query: int = 5) -> str:
         """
-        Runs 5 targeted retrieval queries and deduplicates results to maximise
-        context coverage across architecture, security, data layer, and logic.
+        Runs targeted retrieval queries in parallel (ThreadPoolExecutor) and
+        deduplicates results by (source, content-hash) key.
+        FAISS releases the GIL during L2-search so threads genuinely overlap.
         """
+        all_docs: list = []
+
+        def _search(query: str):
+            return vectorstore.similarity_search(query, k=k_per_query)
+
+        with ThreadPoolExecutor(max_workers=len(RETRIEVAL_QUERIES)) as pool:
+            futures = {pool.submit(_search, q): q for q in RETRIEVAL_QUERIES}
+            for fut in as_completed(futures):
+                try:
+                    all_docs.extend(fut.result())
+                except Exception as exc:
+                    print(f"[ai_engine] Retrieval error: {exc}")
+
         seen: set[str] = set()
         chunks: list[str] = []
+        for doc in all_docs:
+            key = doc.metadata["source"] + doc.page_content[:120]
+            if key not in seen:
+                seen.add(key)
+                chunks.append(f"### FILE: {doc.metadata['source']}\n{doc.page_content}")
 
-        for query in RETRIEVAL_QUERIES:
-            for doc in vectorstore.similarity_search(query, k=k_per_query):
-                key = doc.metadata["source"] + doc.page_content[:120]
-                if key not in seen:
-                    seen.add(key)
-                    chunks.append(f"### FILE: {doc.metadata['source']}\n{doc.page_content}")
-
-        print(f"[ai_engine] Multi-query retrieval: {len(chunks)} unique chunks assembled.")
+        print(f"[ai_engine] Retrieved {len(chunks)} unique chunks.")
         return "\n\n---\n\n".join(chunks)
 
     def analyze_codebase(self, vectorstore: FAISS) -> dict:
@@ -148,7 +208,7 @@ class CodeAnalyzer:
             ],
             model=settings.GROQ_MODEL,
             temperature=0.1,
-            max_tokens=2048,
+            max_tokens=1500,   # reduced from 2048 — enough for 6 bugs + 6 improvements
         )
 
         raw = completion.choices[0].message.content.strip()

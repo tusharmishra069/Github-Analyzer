@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.limiter import limiter
 from app.api.routes import analysis, profile
+from app.services.ai_engine import get_embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,6 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        # Log every env flag so Render's log panel shows what was injected
         print(f"[startup] APP_ENV      = {settings.APP_ENV}")
         print(f"[startup] GROQ_API_KEY = {'SET' if settings.GROQ_API_KEY else 'MISSING'}")
         print(f"[startup] DATABASE_URL = {'SET' if settings.DATABASE_URL else 'MISSING'}")
@@ -29,7 +29,11 @@ async def lifespan(app: FastAPI):
         print(f"[startup] ALLOWED_ORIGINS = {settings.ALLOWED_ORIGINS}")
         settings.validate()
         Base.metadata.create_all(bind=engine)
-        print("[startup] OK — all checks passed")
+        # Warm up the embedding model now so the first analysis request doesn't
+        # pay the ~20-30 s model-load penalty. Safe with preload_app=True.
+        print("[startup] Warming up embedding model...")
+        get_embeddings()
+        print("[startup] OK — all checks passed ✓")
     except Exception as exc:
         print(f"[startup] FAILED: {exc}")
         raise
@@ -96,6 +100,9 @@ async def request_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
     if settings.is_production:
         response.headers["Strict-Transport-Security"] = (
             "max-age=63072000; includeSubDomains; preload"

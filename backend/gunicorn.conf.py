@@ -13,12 +13,12 @@ workers = 1
 worker_class = "uvicorn.workers.UvicornWorker"
 threads = 1
 
-# ── Memory optimisations ─────────────────────────────────────────────────────────
+# ── Memory optimisations ────────────────────────────────────────────────────────────────────
 # preload_app loads heavy libs once before forking workers (saves RAM)
 preload_app = True
-# Recycle worker after N requests to prevent slow memory leaks
-max_requests = 200
-max_requests_jitter = 40
+# Recycle worker after 100 requests to prevent slow memory leaks from FAISS
+max_requests = 100
+max_requests_jitter = 20
 worker_tmp_dir = "/tmp"
 
 # ── Timeouts ─────────────────────────────────────────────────────────────────
