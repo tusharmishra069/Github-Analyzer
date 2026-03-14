@@ -1,462 +1,432 @@
-# Deployment Guide — AI Code Analyzer
+# Deployment & Setup Guide
 
-> **Current stack:** FastAPI 0.135 · Gunicorn 25 · Next.js 16 · React 19 · Neon PostgreSQL · Groq LLM
+> **Current Stack:** FastAPI 0.135 + Gunicorn 25 + Next.js 16 + React 19 + Neon PostgreSQL + Groq LLM  
+> **Architecture:** 6-Phase architect-optimized pipeline (see `docs/system-architecture.md`)  
+> **Performance:** <45 seconds analysis, 13-20x faster than previous version  
+> **Live:** Backend on Railway | Frontend on Vercel
 
 ---
 
 ## Table of Contents
 
-1. [Deployment Readiness Checklist](#1-deployment-readiness-checklist)
-2. [Prerequisites](#2-prerequisites)
-3. [Project Structure](#3-project-structure)
-4. [External Services](#4-external-services)
-5. [Generate an API Key](#5-generate-an-api-key)
-6. [Running Locally (Dev)](#6-running-locally-dev)
-7. [Deploy: Backend on Railway](#7-deploy-backend-on-railway)
-8. [Deploy: Frontend on Vercel](#8-deploy-frontend-on-vercel)
-9. [Deploy: Full Stack via Docker Compose](#9-deploy-full-stack-via-docker-compose)
-10. [Environment Variable Reference](#10-environment-variable-reference)
-11. [Verifying the Stack](#11-verifying-the-stack)
-12. [Troubleshooting](#12-troubleshooting)
+1. [Deployment Status](#deployment-status)
+2. [Prerequisites](#prerequisites)
+3. [Project Structure](#project-structure)
+4. [Security: Before Going Live](#security-before-going-live)
+5. [External Services Setup](#external-services-setup)
+6. [Local Development](#local-development)
+7. [Deploy: Backend to Railway](#deploy-backend-to-railway)
+8. [Deploy: Frontend to Vercel](#deploy-frontend-to-vercel)
+9. [Environment Variables Reference](#environment-variables-reference)
+10. [Verification & Testing](#verification--testing)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
-## 1. Deployment Readiness Checklist
+## Deployment Status
 
-Both services are **production-ready** as of the current commit.
+### ✅ Production-Ready Components
 
-### ✅ Backend (FastAPI)
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Backend (FastAPI) | ✅ Ready | 6-phase pipeline, pattern analyzer, conditional embedding |
+| Frontend (Next.js) | ✅ Ready | Standalone, Server Components, optimized images |
+| Database (Neon) | ✅ Ready | Single `jobs` table, auto-scaling pooling |
+| API Authentication | ✅ Ready | HMAC-SHA256 API key validation |
+| Rate Limiting | ✅ Ready | slowapi with per-endpoint quotas |
+| Docker | ✅ Ready | Multi-stage builds, non-root user, security hardened |
+| Security Headers | ✅ Ready | HSTS, CSP, X-Frame-Options, etc. |
 
-| Item | Status |
-|---|---|
-| Layered `app/` package (routes / services / schemas / core / models) | ✅ |
-| Gunicorn + UvicornWorker production server (`gunicorn.conf.py`) | ✅ |
-| Multi-stage `Dockerfile` (builder → slim runtime, non-root user) | ✅ |
-| `lifespan` startup: env validation + `CREATE TABLE IF NOT EXISTS` | ✅ |
-| CORS middleware (explicit origins, `credentials=True`) | ✅ |
-| HMAC-SHA256 API key auth (`require_api_key` FastAPI dependency) | ✅ |
-| Rate limiting via `slowapi` (10/min AI, 120/min polling, 60/min default) | ✅ |
-| Security response headers (HSTS, X-Frame-Options, etc.) | ✅ |
-| Swagger/ReDoc disabled in production | ✅ |
-| Neon PostgreSQL via SQLAlchemy 2 (pool_size=5) | ✅ |
-| Worker race-condition fix (result saved before COMPLETED status) | ✅ |
-| `requirements.txt` with pinned deps | ✅ |
+### ⚠️ Pre-Deployment: Rotate Secrets
 
-### ✅ Frontend (Next.js)
-
-| Item | Status |
-|---|---|
-| `output: "standalone"` in `next.config.ts` | ✅ |
-| Multi-stage `Dockerfile` (deps → builder → alpine runner) | ✅ |
-| `apiFetch` helper in `src/lib/api.ts` (injects `X-API-Key` header) | ✅ |
-| Security headers (`next.config.ts` headers callback) | ✅ |
-| All 4 fetch call sites use `apiFetch` | ✅ |
-
-### ⚠️ Before deploying — rotate your secrets
-
-Your `backend/.env` credentials have been exposed. **Do this before going live:**
-
-1. **Groq** → [console.groq.com](https://console.groq.com) → API Keys → revoke + create new
-2. **Neon** → [console.neon.tech](https://console.neon.tech) → project → Settings → Reset password
-3. **API_SECRET_KEY** → run `cd backend && python -m app.core.security` for a fresh key
-4. **GitHub token** → [github.com/settings/tokens](https://github.com/settings/tokens) → delete + regenerate
-
----
-
-## 2. Prerequisites
-
-| Tool | Minimum | Notes |
-|---|---|---|
-| Python | **3.12** | `str | None` syntax; 3.14 also tested |
-| Node.js | **20 LTS** | |
-| npm | **10** | Ships with Node 20 |
-| Git | any | Required at runtime — backend clones repos |
-| Docker + Compose | 24 / 2.x | Only needed for Docker deployments |
+Your `.env` credentials may have been exposed. **Do this before going live:**
 
 ```bash
-# macOS
-brew install python@3.12 node git
+# 1. Groq API Key
+# Go to: https://console.groq.com → API Keys → Revoke old → Create new
+
+# 2. Neon Database Password
+# Go to: https://console.neon.tech → Project Settings → Reset password
+
+# 3. API Secret Key (new random key)
+cd backend
+python3 -c "import secrets; print('API_SECRET_KEY=' + secrets.token_urlsafe(32))"
+
+# 4. GitHub Token (if used)
+# Go to: https://github.com/settings/tokens → Delete old → Create new (if needed)
 ```
 
 ---
 
-## 3. Project Structure
+## Prerequisites
+
+| Tool | Minimum | Notes |
+|---|---|---|
+| **Python** | 3.11 | Type hints: `str | None` syntax |
+| **Node.js** | 20 LTS | Ships with npm 10 |
+| **Git** | Latest | Required at runtime (backend clones repos) |
+| **Docker** | 24+ | Only for Docker deployments |
+| **Docker Compose** | 2.x | For local full-stack testing |
+
+### Install Locally (macOS)
+
+```bash
+brew install python@3.11 node git
+```
+
+---
+
+## Project Structure
 
 ```
 ai-code-analyzer/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes/        analysis.py  profile.py
-│   │   ├── core/              config.py  database.py  limiter.py  security.py
+│   │   ├── api/routes/        analysis.py, profile.py
+│   │   ├── services/          pattern_analyzer.py, ai_engine.py, repo_parser.py, worker.py
 │   │   ├── models/            job.py
-│   │   ├── schemas/           analysis.py  profile.py
-│   │   └── services/          ai_engine.py  github_service.py  repo_parser.py
-│   │                          roast_generator.py  profile_review_generator.py  worker.py
-│   ├── main.py                FastAPI app factory + middleware
-│   ├── gunicorn.conf.py       2 workers · UvicornWorker · 300s timeout
-│   ├── requirements.txt       30 pinned deps
-│   ├── Dockerfile
+│   │   ├── schemas/           analysis.py, profile.py
+│   │   └── core/              config.py, database.py, security.py, limiter.py
+│   │
+│   ├── main.py                FastAPI app factory
+│   ├── gunicorn.conf.py       Production server config
+│   ├── Dockerfile             Multi-stage build
+│   ├── requirements.txt        30 pinned dependencies
 │   └── .env.example
+│
 ├── frontend/
 │   ├── src/
-│   │   ├── app/               repo-analysis/  profile-review/  profile-roast/
-│   │   ├── components/        Navbar  Footer  Features  Pricing  ThreeDScene
-│   │   └── lib/api.ts         apiFetch helper (injects X-API-Key)
-│   ├── next.config.ts         standalone output + security headers
+│   │   ├── app/               Pages (landing, analysis, profile-review, roast)
+│   │   ├── components/        UI components + 3D scene
+│   │   └── lib/               Utilities (api.ts, utils.ts)
+│   │
+│   ├── package.json
+│   ├── next.config.ts
 │   ├── Dockerfile
-│   └── .env.example
-├── docker-compose.yml
-└── env.example
+│   └── tsconfig.json
+│
+├── docs/
+│   ├── system-architecture.md    Complete architecture + 6-phase flow
+│   ├── setup.md                  This file
+│   ├── about.md                  Product overview
+│   ├── database.md               Schema details
+│   ├── testing.md                Local testing commands
+│   ├── add_on_features.md        Roadmap
+│   └── ARCHITECT_REDESIGN.md     Optimization details
+│
+└── README.md                   Quick start guide
 ```
 
 ---
 
-## 4. External Services
+## Security: Before Going Live
 
-### 4.1 Groq (LLM) — required
-
-1. Sign up at [console.groq.com](https://console.groq.com)
-2. **API Keys** → Create API key
-3. Save as `GROQ_API_KEY`
-4. Default model: `llama-3.3-70b-versatile` (free tier, no card required)
-
-### 4.2 PostgreSQL — required
-
-The app calls `CREATE TABLE IF NOT EXISTS` on startup — no migrations needed.
-
-| Platform | Free tier | Connection string format |
-|---|---|---|
-| **Neon** ✅ recommended | ✅ | `postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname?sslmode=require&channel_binding=require` |
-| Supabase | ✅ | `postgresql://postgres:pass@db.xxx.supabase.co:5432/postgres` |
-| Railway | limited | `postgresql://postgres:pass@xxx.railway.app:5432/railway` |
-| Local | — | `postgresql://postgres:postgres@localhost:5432/codeanalyzer` |
-
-### 4.3 GitHub Personal Access Token — optional
-
-Without a token: **60 requests/hour** per IP. With a token: **5 000 requests/hour**.
-
-1. Go to [github.com/settings/tokens](https://github.com/settings/tokens)
-2. **Generate new token (classic)**
-3. Scope: ✅ `public_repo` only
-4. Save as `GITHUB_TOKEN`
-
----
-
-## 5. Generate an API Key
-
-The backend uses a single pre-shared secret. The **same value** goes in both services.
+### 1. Rotate All Credentials
 
 ```bash
-cd backend
-source venv/bin/activate
-python -m app.core.security
+# Groq API Key
+# https://console.groq.com/keys → Revoke old, create new
+
+# Neon Database
+# https://console.neon.tech → Project Settings → Reset password
+
+# API Secret
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+# Set as API_SECRET_KEY in Railway/Vercel env vars
+
+# GitHub Token (if used for authenticated API calls)
+# https://github.com/settings/tokens → Delete + recreate if needed
 ```
 
-Output:
+### 2. Update Environment Variables
+
+**Railway (Backend):**
+```bash
+GROQ_API_KEY=gsk_new_...
+DATABASE_URL=postgresql://user:pass@...neon.tech/neondb?sslmode=require
+API_SECRET_KEY=<new-secret>
+ALLOWED_ORIGINS=https://github-analyzer-tan.vercel.app
 ```
-New API key generated:
-  a3f9e2d1c8b74f560e9a1d23b56c78ef...
 
-Set in backend:   API_SECRET_KEY=a3f9e2d1c8b74f560e9a1d23b56c78ef...
-Set in frontend:  NEXT_PUBLIC_API_KEY=a3f9e2d1c8b74f560e9a1d23b56c78ef...
+**Vercel (Frontend):**
+```bash
+NEXT_PUBLIC_API_URL=https://github-analyzer-production.up.railway.app
+NEXT_PUBLIC_API_KEY=<same-as-Railway>
 ```
 
-- `backend/.env` → `API_SECRET_KEY=<value>`
-- `frontend/.env.local` → `NEXT_PUBLIC_API_KEY=<same value>`
+### 3. Verify HTTPS Everywhere
 
-> **Dev bypass:** When `APP_ENV=development` and `API_SECRET_KEY` is blank, all requests are allowed through with a warning log. Never ship this to prod.
+- ✅ Vercel: Auto-HTTPS on all deployments
+- ✅ Railway: Auto-HTTPS on `*.railway.app` domains
+- ✅ Neon: SSL-only connections (required in DATABASE_URL)
+- ✅ Groq: All API calls over HTTPS
 
 ---
 
-## 6. Running Locally (Dev)
+## External Services Setup
 
-### Backend
+### Neon PostgreSQL
+
+1. Go to [https://console.neon.tech](https://console.neon.tech)
+2. Create a new project (or reuse existing)
+3. Copy the **pooled** connection string
+4. Set as `DATABASE_URL` environment variable
+5. On first run, the app auto-creates the `jobs` table
+
+### Groq API
+
+1. Go to [https://console.groq.com](https://console.groq.com)
+2. Create account (free tier: 30 requests/minute)
+3. Navigate to API Keys → Create new key
+4. Set as `GROQ_API_KEY` environment variable
+
+---
+
+## Local Development
+
+### 1. Clone & Setup
 
 ```bash
+git clone https://github.com/tusharmishra069/Github-Analyzer.git
+cd Github-Analyzer
+
 cd backend
-python3.12 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
 cp .env.example .env
+# Edit .env with credentials:
+# GROQ_API_KEY=...
+# DATABASE_URL=...
+# API_SECRET_KEY=<generate-new>
 ```
 
-Minimum `backend/.env` for dev:
-
-```dotenv
-APP_ENV=development
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
-DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require
-# API_SECRET_KEY=        ← leave blank for dev bypass
-# GITHUB_TOKEN=          ← optional
-```
+### 2. Start Backend (FastAPI)
 
 ```bash
-uvicorn main:app --reload --port 8000
+cd backend
+
+python3 -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
+
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-| Endpoint | URL |
-|---|---|
-| Swagger UI | http://localhost:8000/docs |
-| Health check | http://localhost:8000/health |
-| ReDoc | http://localhost:8000/redoc |
+Backend: `http://localhost:8000`  
+Swagger: `http://localhost:8000/docs` (dev only)
 
-### Frontend
+### 3. Start Frontend (Next.js)
 
 ```bash
 cd frontend
+
 npm install
-cp .env.example .env.local
-```
 
-`frontend/.env.local`:
-
-```dotenv
+cat > .env.local <<EOF
 NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_API_KEY=        # leave blank in dev
-```
+NEXT_PUBLIC_API_KEY=dev-key-change-in-production
+EOF
 
-```bash
 npm run dev
-# → http://localhost:3000
 ```
+
+Frontend: `http://localhost:3000`
+
+### 4. Test the Pipeline
+
+1. Open http://localhost:3000 → `/repo-analysis`
+2. Paste repo: `https://github.com/fastapi/fastapi`
+3. Click "Analyze"
+4. Watch logs for 6-phase progress:
+   ```
+   Clone (3s) → Parse (3s) → Sampling (2s) → Patterns (3s) → [Embed 0-5s] → LLM (8-15s)
+   ```
 
 ---
 
-## 7. Deploy: Backend on Railway
+## Deploy: Backend to Railway
 
-Railway detects the `Dockerfile` automatically — zero extra config needed.
+### Prerequisites
+
+- Railway account: [https://railway.app](https://railway.app)
+- GitHub repository connected
 
 ### Steps
 
-1. Push this repo to GitHub (already at `tusharmishra069/CodeBase-Analyzer`)
+1. **Push code to GitHub**
+   ```bash
+   git push origin main
+   ```
 
-2. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
+2. **Create Railway Project**
+   - Go to [https://railway.app/new](https://railway.app/new)
+   - "Deploy from GitHub"
+   - Select repo (Railway auto-detects Dockerfile)
 
-3. Select `tusharmishra069/CodeBase-Analyzer` → set **Root directory** to `backend`
+3. **Set Environment Variables**
+   - Railway Dashboard → Settings → Environment
+   ```
+   GROQ_API_KEY=gsk_...
+   DATABASE_URL=postgresql://...
+   API_SECRET_KEY=<new>
+   EMBEDDING_MODEL_NAME=paraphrase-MiniLM-L3-v2
+   ALLOWED_ORIGINS=https://github-analyzer-tan.vercel.app
+   ```
 
-4. Railway builds from the `Dockerfile` automatically
+4. **Deploy**
+   - Auto-deploys on push to `main`
+   - First build: ~5 minutes (downloading dependencies)
+   - Subsequent: ~2 minutes (cached layers)
 
-5. **Variables** tab → add all required vars:
-
-```
-APP_ENV                = production
-GROQ_API_KEY           = gsk_xxxxxxxxxxxxxxxxxxxx
-DATABASE_URL           = postgresql://...?sslmode=require
-API_SECRET_KEY         = <generated in §5>
-ALLOWED_ORIGINS        = https://your-frontend.vercel.app
-GITHUB_TOKEN           = ghp_xxxxxxxxxxxxxxxxxxxx
-```
-
-6. **Settings** → **Networking** → **Generate Domain**  
-   Note the URL: `https://codeanalyzer-backend.up.railway.app`
-
-7. Verify:
-
-```bash
-curl https://codeanalyzer-backend.up.railway.app/health
-# → {"status":"ok","env":"production",...}
-```
-
-> Add `WEB_CONCURRENCY=4` to Railway Variables to increase Gunicorn workers beyond the default 2.
+5. **Verify**
+   ```bash
+   curl -H "X-API-Key: <key>" \
+     https://github-analyzer-production.up.railway.app/health
+   # { "status": "ok" }
+   ```
 
 ---
 
-## 8. Deploy: Frontend on Vercel
+## Deploy: Frontend to Vercel
+
+### Prerequisites
+
+- Vercel account: [https://vercel.com](https://vercel.com)
+- GitHub repository connected
 
 ### Steps
 
-1. [vercel.com](https://vercel.com) → **New Project** → Import `tusharmishra069/CodeBase-Analyzer`
+1. **Connect Repository**
+   - Vercel Dashboard → Add project
+   - Select GitHub repo, import `frontend/` directory
+   - Framework: Next.js
 
-2. Set **Root Directory** to `frontend`
+2. **Set Environment Variables**
+   - Project Settings → Environment Variables
+   ```
+   NEXT_PUBLIC_API_URL=https://github-analyzer-production.up.railway.app
+   NEXT_PUBLIC_API_KEY=<same-as-Railway>
+   ```
 
-3. Framework preset auto-detects as **Next.js**
-
-4. **Environment Variables** → add:
-
-```
-NEXT_PUBLIC_API_URL  = https://codeanalyzer-backend.up.railway.app
-NEXT_PUBLIC_API_KEY  = <same value as API_SECRET_KEY on backend>
-```
-
-5. Click **Deploy**
-
-6. Copy the Vercel URL (e.g. `https://codeanalyzer.vercel.app`)
-
-7. Go back to Railway → update `ALLOWED_ORIGINS` to include the Vercel URL:
-
-```
-ALLOWED_ORIGINS = https://codeanalyzer.vercel.app
-```
-
-8. Redeploy Railway backend (Deployments → Redeploy) to pick up the CORS change
-
-### Custom domain (optional)
-
-Vercel: **Settings** → **Domains** → add your domain  
-Railway: **Settings** → **Networking** → **Custom Domain**
+3. **Deploy**
+   - Auto-deploys on push to `main`
+   - Live at: `https://github-analyzer-tan.vercel.app`
 
 ---
 
-## 9. Deploy: Full Stack via Docker Compose
+## Environment Variables Reference
 
-For a VPS (DigitalOcean, Hetzner, EC2, etc.):
+### Backend
 
-```bash
-git clone https://github.com/tusharmishra069/CodeBase-Analyzer.git
-cd CodeBase-Analyzer
+| Variable | Example | Required | Notes |
+|----------|---------|----------|-------|
+| `GROQ_API_KEY` | `gsk_...` | ✅ | From https://console.groq.com |
+| `DATABASE_URL` | `postgresql://...neon.tech...` | ✅ | Neon pooled endpoint |
+| `API_SECRET_KEY` | `<random-32>` | ✅ | HMAC key, rotate periodically |
+| `EMBEDDING_MODEL_NAME` | `paraphrase-MiniLM-L3-v2` | ❌ | Faster 30MB model (default) |
+| `MAX_EMBED_BYTES` | `1048576` | ❌ | 1MB cap (default) |
+| `MAX_FILE_COUNT` | `30` | ❌ | Max files (default: 30) |
+| `ALLOWED_ORIGINS` | `https://github-analyzer-tan.vercel.app` | ❌ | CORS origins |
 
-cp env.example .env
-nano .env
-```
+### Frontend
 
-Fill in `.env`:
-
-```dotenv
-# ── Backend ───────────────────────────────────────────────────────────────────
-APP_ENV=production
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
-DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require
-API_SECRET_KEY=<generate: cd backend && python -m app.core.security>
-ALLOWED_ORIGINS=http://your-server-ip:3000,https://yourdomain.com
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
-
-# ── Frontend ──────────────────────────────────────────────────────────────────
-NEXT_PUBLIC_API_URL=http://your-server-ip:8000
-NEXT_PUBLIC_API_KEY=<same value as API_SECRET_KEY>
-```
-
-```bash
-docker compose up -d --build
-docker compose logs -f
-docker compose ps
-```
-
-| Service | Port | Health check |
-|---|---|---|
-| `backend` | `8000` | `http://localhost:8000/health` |
-| `frontend` | `3000` | `http://localhost:3000` |
-
-> The frontend waits for the backend health check before starting (`depends_on: condition: service_healthy`).
-
-```bash
-docker compose down           # stop and remove containers
-docker compose restart        # restart all services
-```
+| Variable | Example | Required | Notes |
+|----------|---------|----------|-------|
+| `NEXT_PUBLIC_API_URL` | `https://github-analyzer-production.up.railway.app` | ✅ | Backend URL |
+| `NEXT_PUBLIC_API_KEY` | `<same-as-backend>` | ✅ | API key |
 
 ---
 
-## 10. Environment Variable Reference
+## Verification & Testing
 
-### Backend (`backend/.env`)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `GROQ_API_KEY` | ✅ | — | Groq API key |
-| `DATABASE_URL` | ✅ | — | PostgreSQL connection string |
-| `API_SECRET_KEY` | ✅ prod | — | Auth token. Blank → dev bypass active |
-| `APP_ENV` | — | `development` | Set `production` to enable all guards |
-| `ALLOWED_ORIGINS` | ✅ prod | `http://localhost:3000` | Comma-separated list of trusted frontend origins |
-| `GITHUB_TOKEN` | — | — | GitHub PAT for higher rate limits |
-| `GROQ_MODEL` | — | `llama-3.3-70b-versatile` | Override Groq model |
-| `MAX_FILE_COUNT` | — | `120` | Max files parsed per repo |
-| `MAX_FILE_SIZE_BYTES` | — | `524288` | Max single file size (bytes) |
-| `RATE_LIMIT_DEFAULT` | — | `60/minute` | Default rate limit |
-| `RATE_LIMIT_AI` | — | `10/minute` | Limit on `/api/analyze`, `/api/roast`, `/api/profile-review` |
-| `RATE_LIMIT_STATUS` | — | `120/minute` | Limit on `/api/jobs/{id}/status` |
-
-### Frontend (`frontend/.env.local` / `.env.production.local`)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `NEXT_PUBLIC_API_URL` | — | `http://localhost:8000` | Backend base URL — **must include `http://`**, no trailing slash |
-| `NEXT_PUBLIC_API_KEY` | ✅ prod | — | Must exactly match `API_SECRET_KEY` on the backend |
-
-> `NEXT_PUBLIC_*` vars are **baked into the browser bundle at build time**. Changing them requires a rebuild / redeploy.
-
----
-
-## 11. Verifying the Stack
-
-### Health check
+### 1. Health Checks
 
 ```bash
-curl https://your-backend.railway.app/health
-# {"status":"ok","service":"AI Code Analyzer API","version":"2.0.0","env":"production"}
+# Backend
+curl -H "X-API-Key: <key>" \
+  https://github-analyzer-production.up.railway.app/health
+# { "status": "ok" }
+
+# Frontend
+curl https://github-analyzer-tan.vercel.app | head -20
+# HTML response
 ```
 
-### Auth check
+### 2. Full E2E Test
+
+1. Open https://github-analyzer-tan.vercel.app
+2. → `/repo-analysis`
+3. Paste: `https://github.com/fastapi/fastapi`
+4. Click "Analyze"
+5. Verify results in <45 seconds
+
+### 3. Backend Logs (Railway)
 
 ```bash
-# No key → 401
-curl -s -o /dev/null -w "%{http_code}" \
-  -X POST https://your-backend.railway.app/api/roast \
-  -H "Content-Type: application/json" \
-  -d '{"username":"torvalds"}'
-
-# Correct key → 200
-curl -s -X POST https://your-backend.railway.app/api/roast \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR_KEY" \
-  -d '{"username":"torvalds"}'
+railway logs -f
 ```
 
-### Rate limit check (should hit 429 after 10 requests)
-
-```bash
-for i in $(seq 1 12); do
-  curl -s -o /dev/null -w "%{http_code}\n" \
-    -X POST https://your-backend.railway.app/api/roast \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: YOUR_KEY" \
-    -d '{"username":"torvalds"}'
-done
-# First 10 → 200, then → 429
+Expected output:
 ```
-
-### Docker Compose
-
-```bash
-docker compose ps                    # status should be "healthy"
-docker compose logs backend --tail 20
-docker compose logs frontend --tail 20
+[worker] Job xyz SUCCESS (ARCHITECT DESIGN)
+  Total:     22.0s
+  Pattern bugs: 5 | LLM enhancements: +2
 ```
 
 ---
 
-## 12. Troubleshooting
+## Troubleshooting
 
-### `Missing required environment variables: GROQ_API_KEY is required`
-Backend validates required vars on startup. Check `backend/.env` exists with all values filled. In Docker pass `--env-file .env`.
+### Frontend Returns 404
 
-### `ALLOWED_ORIGINS must not contain '*' in production`
-Set explicit origins: `ALLOWED_ORIGINS=https://yourdomain.com`
+**Symptom:** "Unexpected token '<'" in console
 
-### `psycopg2.OperationalError: could not connect`
-- Neon/Supabase require `?sslmode=require` in the URL
-- Old `postgres://` prefix is auto-corrected to `postgresql://`
-- Check firewall / IP allowlist on the DB provider dashboard
-
-### `401 Unauthorized` on all API calls
-- **Dev:** Leave `API_SECRET_KEY` blank — requests pass through automatically
-- **Prod:** Confirm `API_SECRET_KEY` (backend) exactly matches `NEXT_PUBLIC_API_KEY` (frontend)
-
-### `Backend connection failed` in the frontend
-- `NEXT_PUBLIC_API_URL` must include the protocol: `http://localhost:8000` not `localhost:8000`
-- Check CORS: the frontend origin must be in `ALLOWED_ORIGINS`
-
-### `429 Too Many Requests`
-Rate limit hit. Increase: add `RATE_LIMIT_AI=30/minute` to `backend/.env` and restart.
-
-### Report not showing after analysis (shows only footer)
-Fixed in current code — `job.result` is now committed atomically with `status=COMPLETED` in `app/services/worker.py`.
-
-### `NEXT_PUBLIC_API_KEY` is `undefined` in browser
-Must be present at **build time**. On Vercel: add the env var then trigger a redeploy. In Docker: pass `--build-arg NEXT_PUBLIC_API_KEY=...` at build time.
-
-### Docker build fails on `torch` (ARM / Apple Silicon)
-```bash
-docker buildx build --platform linux/amd64 -t codeanalyzer-backend ./backend
+**Fix:** Check `NEXT_PUBLIC_API_URL` in Vercel env:
 ```
+NEXT_PUBLIC_API_URL=https://github-analyzer-production.up.railway.app
+```
+(No trailing slash, HTTPS required)
 
-### Gunicorn worker timeout on large repos
-Default timeout is 300s. For very large repos add `GUNICORN_TIMEOUT=600` or edit `gunicorn.conf.py` → `timeout = 600`.
+### Backend Returns 401
+
+**Symptom:** `{"detail": "Invalid or missing X-API-Key"}`
+
+**Fix:** Verify API key matches in both:
+- Railway: `API_SECRET_KEY`
+- Vercel: `NEXT_PUBLIC_API_KEY`
+
+### Analysis Takes >60s
+
+**Cause:** Large repo, conditional embedding triggered
+
+**Fix:** Check logs (`railway logs`) for phase timings. If embed >30s, repo too large for free tier.
+
+### FAISS Out of Memory
+
+**Symptom:** `RuntimeError: malloc: out of memory`
+
+**Fix:** 
+- Pattern analyzer should catch bugs → skip embedding
+- If not, reduce `MAX_FILE_COUNT`
+- Or upgrade Railway tier
+
+### Neon Connection Refused
+
+**Symptom:** `psycopg2.OperationalError: could not connect to server`
+
+**Fix:**
+- Verify DATABASE_URL is **pooled** endpoint
+- Ensure `?sslmode=require` in URL
+- Test locally: `psql "<DATABASE_URL>"`
+
+---
+
+## Next Steps
+
+1. ✅ Deploy backend to Railway
+2. ✅ Deploy frontend to Vercel
+3. ✅ Test E2E with real repo
+4. ✅ Monitor logs for errors
+5. �� Optional: Custom domain + SSL
+6. 🔄 Optional: Enable caching layer
+
+See `docs/ARCHITECT_REDESIGN.md` for optimization roadmap.
