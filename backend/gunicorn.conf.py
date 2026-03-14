@@ -1,15 +1,14 @@
-"""Gunicorn production configuration — Render compatible."""
+"""Gunicorn production configuration — Railway/Render compatible."""
 import os
 
 # ── Binding ───────────────────────────────────────────────────────────────────
-# Render injects PORT=10000 by default — must match or health checks fail
-port = os.environ.get("PORT", "10000")
+# Railway/Render inject PORT at runtime; local default remains 8000
+port = os.environ.get("PORT", "8000")
 bind = f"0.0.0.0:{port}"
 
 # ── Workers ───────────────────────────────────────────────────────────────────
-# FREE TIER (512 MB): 1 worker only—each UvicornWorker loads torch+sentence-
-# transformers (~300 MB). 2 workers = instant OOM on Render free tier.
-workers = 1
+# Low-memory defaults: keep 1 worker unless explicitly overridden.
+workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
 worker_class = "uvicorn.workers.UvicornWorker"
 threads = 1
 
@@ -23,7 +22,7 @@ worker_tmp_dir = "/tmp"
 
 # ── Timeouts ─────────────────────────────────────────────────────────────────
 # AI analysis can take up to 3 min on large repos
-timeout = 300
+timeout = int(os.environ.get("GUNICORN_TIMEOUT", "300"))
 graceful_timeout = 60
 keepalive = 5
 
@@ -34,7 +33,7 @@ errorlog = "-"
 loglevel = "info"
 access_log_format = '%(h)s "%(r)s" %(s)s %(b)s %(D)sµs'
 
-# ── Render: trust X-Forwarded-For from Render's proxy ─────────────────────────
+# ── Proxy chain: trust forwarded headers from platform ingress ───────────────
 forwarded_allow_ips = "*"
 
 # ── Process naming ─────────────────────────────────────────────────────────────

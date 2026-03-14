@@ -14,6 +14,19 @@ class Settings:
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
+    # ── AI Engine tuning (Railway/low-memory friendly) ─────────────────────
+    EMBEDDING_MODEL_NAME: str = os.getenv(
+        "EMBEDDING_MODEL_NAME",
+        "all-MiniLM-L6-v2",
+    )
+    EMBEDDING_BATCH_SIZE: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "16"))
+    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
+    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "100"))
+    RETRIEVAL_QUERY_COUNT: int = int(os.getenv("RETRIEVAL_QUERY_COUNT", "4"))
+    RETRIEVAL_K_PER_QUERY: int = int(os.getenv("RETRIEVAL_K_PER_QUERY", "4"))
+    MAX_EMBED_BYTES: int = int(os.getenv("MAX_EMBED_BYTES", str(2 * 1024 * 1024)))
+    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1400"))
+
     # ── Database ──────────────────────────────────────────────────────────────
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
