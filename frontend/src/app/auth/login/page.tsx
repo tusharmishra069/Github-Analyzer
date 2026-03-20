@@ -57,8 +57,8 @@ export default function LoginPage() {
       localStorage.setItem('refresh_token', data.refresh_token);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      // Redirect to dashboard
-      router.push(data.user.role === 'admin' ? '/admin/dashboard' : '/user/dashboard');
+      // Redirect to user dashboard
+      router.push('/user/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to verify OTP');
     } finally {

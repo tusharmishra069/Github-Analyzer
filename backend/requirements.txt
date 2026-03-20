@@ -4,15 +4,25 @@ uvicorn[standard]==0.41.0
 gunicorn==25.1.0
 starlette==0.52.1
 slowapi==0.1.9
+python-multipart==0.0.6
 
 # ── Database ──────────────────────────────────────────────────────────────────
 SQLAlchemy==2.0.48
 psycopg2-binary==2.9.11
+alembic==1.13.3
 
 # ── Validation & settings ─────────────────────────────────────────────────────
 pydantic==2.12.5
 pydantic-settings==2.13.1
 python-dotenv==1.2.2
+email-validator==2.3.0
+
+# ── Authentication & Security ─────────────────────────────────────────────────
+PyJWT==2.12.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+cryptography==44.0.0
+bcrypt==4.2.1
 
 # ── LLM & AI ──────────────────────────────────────────────────────────────────
 groq==1.0.0
@@ -29,3 +39,11 @@ numpy==2.4.2
 GitPython==3.1.46
 httpx==0.28.1
 httpx-sse==0.4.3
+
+# ── Email & OAuth ─────────────────────────────────────────────────────────────
+aiosmtplib==3.0.1
+
+# ── Optional: Email Services (uncomment as needed) ─────────────────────────────
+# sendgrid==6.11.0        # For SendGrid email service
+# resend==0.12.1          # For Resend email service
+# twilio==9.3.5           # For SMS OTP via Twilio

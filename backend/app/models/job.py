@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, JSON
+from sqlalchemy import Column, String, Integer, DateTime, JSON, ForeignKey
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -9,6 +9,7 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     repository_url = Column(String(255), index=True, nullable=False)
     status = Column(String(50), default="PENDING", index=True)  # PENDING | PROCESSING | COMPLETED | FAILED
     progress = Column(Integer, default=0)

@@ -91,6 +91,13 @@ Start the API:
 uvicorn main:app --reload --port 8000
 ```
 
+Run database migrations:
+
+```bash
+cd backend
+alembic upgrade head
+```
+
 ### 3. Frontend Setup
 
 ```bash

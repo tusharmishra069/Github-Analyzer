@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from pydantic import BaseModel, field_validator
 from typing import Optional, Any
 
@@ -35,3 +36,17 @@ class JobStatusResponse(BaseModel):
     progress: int
     message: str
     result: Optional[Any] = None
+
+
+class JobListItem(BaseModel):
+    job_id: str
+    repository_url: str
+    status: str
+    progress: int
+    message: str
+    created_at: datetime
+    result: Optional[Any] = None
+
+
+class JobListResponse(BaseModel):
+    items: list[JobListItem]

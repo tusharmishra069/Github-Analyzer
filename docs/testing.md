@@ -71,6 +71,74 @@ pytest -m "not slow"
 
 ---
 
+## Backend Start Commands
+
+### Development Mode (with auto-reload)
+
+```bash
+# Terminal 1: Start backend
+cd backend
+
+# Activate virtual environment
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Start with uvicorn (auto-reload enabled)
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+You should see:
+```
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [12345] using StatReload
+INFO:     Started server process [12346]
+```
+
+### Production Mode (gunicorn)
+
+```bash
+cd backend
+source venv/bin/activate
+
+# Start with gunicorn (production-grade)
+gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --port 8000
+```
+
+### With Environment Variables
+
+```bash
+cd backend
+source venv/bin/activate
+
+# Load .env file and start
+export $(cat .env | xargs)
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Background Process (for testing)
+
+```bash
+cd backend
+source venv/bin/activate
+
+# Start backend in background
+uvicorn main:app --reload --host 0.0.0.0 --port 8000 &
+
+# Stop background process
+pkill -f "uvicorn main:app"
+```
+
+### Check Backend Health
+
+```bash
+# Test if backend is running
+curl http://localhost:8000/health
+
+# Expected response:
+# {"status":"ok"}
+```
+
+---
+
 ## Unit Tests
 
 ### Test Pattern Analyzer
@@ -215,6 +283,50 @@ client = TestClient(app)
 
 def test_health_endpoint():
     """Test health check endpoint."""
+    response = client.get("/health")
+    
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+def test_google_oauth_callback():
+    """Test Google OAuth callback endpoint."""
+    response = client.get(
+        "/auth/google/callback",
+        params={"code": "test_auth_code"}
+    )
+    
+    # Should handle invalid code gracefully
+    assert response.status_code in [400, 401]
+
+def test_github_oauth_callback():
+    """Test GitHub OAuth callback endpoint."""
+    response = client.get(
+        "/auth/github/callback",
+        params={"code": "test_auth_code"}
+    )
+    
+    # Should handle invalid code gracefully
+    assert response.status_code in [400, 401]
+
+def test_send_otp():
+    """Test OTP sending endpoint."""
+    response = client.post(
+        "/auth/send-otp",
+        json={"email": "test@example.com"}
+    )
+    
+    assert response.status_code == 200
+    assert "message" in response.json()
+
+def test_verify_otp_invalid():
+    """Test OTP verification with invalid code."""
+    response = client.post(
+        "/auth/verify-otp",
+        json={"email": "test@example.com", "code": "000000"}
+    )
+    
+    # Should fail with invalid OTP
+    assert response.status_code == 400
     response = client.get("/health")
     
     assert response.status_code == 200

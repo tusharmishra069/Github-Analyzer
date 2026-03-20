@@ -12,7 +12,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.limiter import limiter
-from app.api.routes import analysis, profile
+from app.api.routes import analysis, profile, auth
 from app.services.ai_engine import get_embeddings
 
 logger = logging.getLogger(__name__)
@@ -125,6 +125,7 @@ async def server_error_handler(request: Request, exc):
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(analysis.router)
 app.include_router(profile.router)
+app.include_router(auth.router)
 
 
 # ── Health check (unauthenticated — used by load balancers / Docker) ──────────

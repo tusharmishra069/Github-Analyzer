@@ -1,15 +1,18 @@
 """Authentication API routes."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.services.auth_service import (
-    generate_google_oauth_url,
-    generate_github_oauth_url,
-    exchange_google_code,
+    create_access_token,
     exchange_github_code,
+    exchange_google_code,
+    generate_github_oauth_url,
+    generate_google_oauth_url,
+    revoke_refresh_token,
     send_email_otp,
     verify_email_otp,
+    verify_refresh_token,
     verify_token,
 )
 from pydantic import BaseModel
@@ -115,23 +118,33 @@ async def email_verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_
 @router.post("/refresh")
 async def refresh_access_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
     """Refresh access token using refresh token."""
-    # TODO: Implement refresh token validation
-    raise HTTPException(status_code=501, detail="Not implemented")
+    user = verify_refresh_token(db, request.refresh_token)
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    access_token = create_access_token(user.id, user.email, user.role)
+    return {"access_token": access_token}
 
 
 @router.post("/logout")
-async def logout(authorization: str = None):
-    """Logout user."""
+async def logout(request: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """Logout user by revoking refresh token."""
+    revoked = revoke_refresh_token(db, request.refresh_token)
+
+    if not revoked:
+        raise HTTPException(status_code=400, detail="Invalid refresh token")
+
     return {"success": True, "message": "Logged out successfully"}
 
 
 @router.get("/me")
-async def get_current_user(authorization: str = None):
+async def get_current_user(authorization: str | None = Header(default=None)):
     """Get current user info."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
-    
-    token = authorization.substring(7)
+
+    token = authorization.split(" ", 1)[1]
     payload = verify_token(token)
     
     if not payload:

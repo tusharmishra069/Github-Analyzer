@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function OAuthCallbackPage() {
@@ -8,9 +8,15 @@ export default function OAuthCallbackPage() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const hasHandled = useRef(false);
 
   useEffect(() => {
     const handleCallback = async () => {
+      if (hasHandled.current) {
+        return;
+      }
+      hasHandled.current = true;
+
       try {
         const code = searchParams.get('code');
         const provider = searchParams.get('provider');
@@ -38,8 +44,8 @@ export default function OAuthCallbackPage() {
         localStorage.setItem('refresh_token', data.refresh_token);
         localStorage.setItem('user', JSON.stringify(data.user));
 
-        // Redirect to dashboard
-        router.push(data.user.role === 'admin' ? '/admin/dashboard' : '/user/dashboard');
+        // Redirect to user dashboard
+        router.push('/user/dashboard');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Authentication failed');
         setLoading(false);
