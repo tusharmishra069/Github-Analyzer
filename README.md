@@ -39,22 +39,13 @@ A comedian's take on your GitHub profile. Cruel, specific, and oddly motivating.
 ## Video Demos
 
 ### Repository Analysis Workflow
-<video width="100%" controls>
-  <source src="readme/repo analyzer.mov" type="video/quicktime">
-  Your browser does not support the video tag.
-</video>
+https://github.com/tusharmishra069/Github-Analyzer/assets/repo-analyzer.mp4
 
 ### Profile Review Dashboard
-<video width="100%" controls>
-  <source src="readme/profile.mov" type="video/quicktime">
-  Your browser does not support the video tag.
-</video>
+https://github.com/tusharmishra069/Github-Analyzer/assets/profile.mp4
 
 ### Profile Roast Generation
-<video width="100%" controls>
-  <source src="readme/roast.mov" type="video/quicktime">
-  Your browser does not support the video tag.
-</video>
+https://github.com/tusharmishra069/Github-Analyzer/assets/roast.mp4
 
 ---
 
