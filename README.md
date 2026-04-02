@@ -48,8 +48,8 @@ A comedian's take on your GitHub profile. Cruel, specific, and oddly motivating.
 ![Profile Review 3](assets/profile3.png)
 
 ### Profile Roast
-![Profile Roast 1](assets/roast1.png)
-![Profile Roast 2](assets/roast2.png)
+<img src="assets/roast1.png" alt="Profile Roast 1" width="500"/>
+<img src="assets/roast2.png" alt="Profile Roast 2" width="350" height="200"/>
 
 ---
 
