@@ -33,19 +33,23 @@ A comedian's take on your GitHub profile. Cruel, specific, and oddly motivating.
 
 ## Screenshots & Demo
 
-### Landing page
-![Landing page](assets/s1.png)
+### Landing Page
+![Landing page 1](assets/landing1.png)
+![Landing page 2](assets/landing2.png)
 
-## Video Demos
+### Repository Analysis
+![Repo Analysis 1](assets/repo1.png)
+![Repo Analysis 2](assets/repo2.png)
+![Repo Analysis 3](assets/repo3.png)
 
-### Repository Analysis Workflow
-https://github.com/tusharmishra069/Github-Analyzer/raw/main/assets/repo-analyzer.mp4
+### Profile Review
+![Profile Review 1](assets/profile1.png)
+![Profile Review 2](assets/profile2.png)
+![Profile Review 3](assets/profile3.png)
 
-### Profile Review Dashboard
-https://github.com/tusharmishra069/Github-Analyzer/raw/main/assets/profile.mp4
-
-### Profile Roast Generation
-https://github.com/tusharmishra069/Github-Analyzer/raw/main/assets/roast.mp4
+### Profile Roast
+![Profile Roast 1](assets/roast1.png)
+![Profile Roast 2](assets/roast2.png)
 
 ---
 
