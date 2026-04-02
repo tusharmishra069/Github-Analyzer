@@ -49,7 +49,7 @@ A comedian's take on your GitHub profile. Cruel, specific, and oddly motivating.
 
 ### Profile Roast
 <img src="assets/roast1.png" alt="Profile Roast 1" width="500"/>
-<img src="assets/roast2.png" alt="Profile Roast 2" width="350" height="200"/>
+<img src="assets/roast2.png" alt="Profile Roast 2" width="350" height="700"/>
 
 ---
 
