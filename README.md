@@ -34,7 +34,7 @@ A comedian's take on your GitHub profile. Cruel, specific, and oddly motivating.
 ## Screenshots & Demo
 
 ### Landing page
-![Landing page](readme/s1.png)
+![Landing page](assets/s1.png)
 
 ## Video Demos
 
