@@ -31,6 +31,33 @@ A comedian's take on your GitHub profile. Cruel, specific, and oddly motivating.
 
 ---
 
+## Screenshots & Demo
+
+### Landing page
+![Landing page](readme/s1.png)
+
+## Video Demos
+
+### Repository Analysis Workflow
+<video width="100%" controls>
+  <source src="readme/repo analyzer.mov" type="video/quicktime">
+  Your browser does not support the video tag.
+</video>
+
+### Profile Review Dashboard
+<video width="100%" controls>
+  <source src="readme/profile.mov" type="video/quicktime">
+  Your browser does not support the video tag.
+</video>
+
+### Profile Roast Generation
+<video width="100%" controls>
+  <source src="readme/roast.mov" type="video/quicktime">
+  Your browser does not support the video tag.
+</video>
+
+---
+
 ## Tech Stack
 
 **Frontend**
