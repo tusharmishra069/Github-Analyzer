@@ -161,7 +161,7 @@ export default function RepoAnalysisDashboard() {
             const data = await res.json();
             setJobId(data.job_id);
         } catch {
-            setError("Backend connection failed. Is the Python API running?");
+            setError("Analysis failed: demo backend is currently unavailable (free-tier limit reached). Please try again later or see demo in github.");
             setJobState("error");
         }
     };
