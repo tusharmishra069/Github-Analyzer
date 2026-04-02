@@ -39,13 +39,13 @@ A comedian's take on your GitHub profile. Cruel, specific, and oddly motivating.
 ## Video Demos
 
 ### Repository Analysis Workflow
-https://github.com/tusharmishra069/Github-Analyzer/assets/repo-analyzer.mp4
+https://github.com/tusharmishra069/Github-Analyzer/raw/main/assets/repo-analyzer.mp4
 
 ### Profile Review Dashboard
-https://github.com/tusharmishra069/Github-Analyzer/assets/profile.mp4
+https://github.com/tusharmishra069/Github-Analyzer/raw/main/assets/profile.mp4
 
 ### Profile Roast Generation
-https://github.com/tusharmishra069/Github-Analyzer/assets/roast.mp4
+https://github.com/tusharmishra069/Github-Analyzer/raw/main/assets/roast.mp4
 
 ---
 
